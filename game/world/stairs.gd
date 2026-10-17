@@ -77,15 +77,22 @@ static func lay(batch: Batch, bottom: Vector3, up: Vector3, steps: int, width: f
 ## nosing line, so wheels roll up and down without catching on steps.
 static func ramp(bottom: Vector3, up: Vector3, steps: int, width: float, rise := RISE,
 		going := GOING) -> CollisionShape3D:
-	up = Vector3(up.x, 0, up.z).normalized()
-	var along := up * (going * steps) + Vector3.UP * (rise * steps)
-	var length := along.length()
+	var box := ramp_box(bottom, up, steps, width, rise, going)
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(width, 0.4, length)
+	shape.size = box[1]
 	var cs := CollisionShape3D.new()
 	cs.shape = shape
+	cs.transform = box[0]
+	return cs
+
+
+## The ramp's box as [Transform3D, size], for building it later.
+static func ramp_box(bottom: Vector3, up: Vector3, steps: int, width: float, rise := RISE,
+		going := GOING) -> Array:
+	up = Vector3(up.x, 0, up.z).normalized()
+	var along := up * (going * steps) + Vector3.UP * (rise * steps)
 	var fwd := along.normalized()
 	var side := Vector3.UP.cross(-up).normalized()
 	var normal := side.cross(fwd)
-	cs.transform = Transform3D(Basis(side, normal, -fwd), bottom + along * 0.5 - normal * 0.2)
-	return cs
+	return [Transform3D(Basis(side, normal, -fwd), bottom + along * 0.5 - normal * 0.2),
+			Vector3(width, 0.4, along.length())]

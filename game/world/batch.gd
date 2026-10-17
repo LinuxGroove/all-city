@@ -23,19 +23,55 @@ func count() -> int:
 ## Adds one MultiMeshInstance3D per model under `parent`. `range_end` hides
 ## them past that distance (0 shows them at any distance).
 func build(parent: Node3D, shadows := true, range_end := 0.0) -> void:
+	nodes(buffers(), parent, shadows, range_end)
+
+
+## Every model's instances as a MultiMesh buffer: {model: [buffer, count]}.
+## Only arithmetic, so it runs on a worker thread.
+func buffers() -> Dictionary:
+	var out := {}
 	for model in items:
+		var list: Array = items[model]
+		# One buffer write: a town tile lays tens of thousands of modules.
+		var buf := PackedFloat32Array()
+		buf.resize(list.size() * 16)
+		var k := 0
+		for item in list:
+			var xf: Transform3D = item[0]
+			var c: Color = item[1]
+			buf[k] = xf.basis.x.x
+			buf[k + 1] = xf.basis.y.x
+			buf[k + 2] = xf.basis.z.x
+			buf[k + 3] = xf.origin.x
+			buf[k + 4] = xf.basis.x.y
+			buf[k + 5] = xf.basis.y.y
+			buf[k + 6] = xf.basis.z.y
+			buf[k + 7] = xf.origin.y
+			buf[k + 8] = xf.basis.x.z
+			buf[k + 9] = xf.basis.y.z
+			buf[k + 10] = xf.basis.z.z
+			buf[k + 11] = xf.origin.z
+			buf[k + 12] = c.r
+			buf[k + 13] = c.g
+			buf[k + 14] = c.b
+			buf[k + 15] = c.a
+			k += 16
+		out[model] = [buf, list.size()]
+	return out
+
+
+## The MultiMeshInstance3Ds for `buffers()`, under `parent`.
+static func nodes(bufs: Dictionary, parent: Node3D, shadows := true, range_end := 0.0) -> void:
+	for model in bufs:
 		var mesh := Kit.mesh(model)
 		if mesh == null:
 			continue
-		var list: Array = items[model]
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true
 		mm.mesh = mesh
-		mm.instance_count = list.size()
-		for i in list.size():
-			mm.set_instance_transform(i, list[i][0])
-			mm.set_instance_color(i, list[i][1])
+		mm.instance_count = bufs[model][1]
+		mm.buffer = bufs[model][0]
 		var node := MultiMeshInstance3D.new()
 		node.name = model.replace("/", "_")
 		node.multimesh = mm
