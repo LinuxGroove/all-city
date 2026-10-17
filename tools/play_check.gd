@@ -281,8 +281,8 @@ func _paint() -> void:
 	play.cam.current = true
 
 
-## Whether there's room to stand in front of a wall and look at its paint
-## (Monaco has slits a body's width wide between its buildings).
+## Whether there's room and level ground to stand in front of a wall and look
+## at its paint (Monaco has slits a body's width wide between its buildings).
 func _open(f: Dictionary) -> bool:
 	var along: Vector3 = f.b - f.a
 	var out := along.cross(Vector3.UP).normalized()
@@ -293,7 +293,11 @@ func _open(f: Dictionary) -> bool:
 		var query := PhysicsRayQueryParameters3D.create(from + out * 0.1, from + out * 5.0, 1)
 		if not space.intersect_ray(query).is_empty():
 			return false
-	return true
+	# Level ground to stand on: a writer at rest rolls down a slope.
+	var level := []
+	for away in [0.8, 3.0]:
+		level.append(_ground_at(mid + out * away, 4.0))
+	return absf(level[0] - level[1]) < 0.2 and absf(level[0] - float(f.base)) < 0.4
 
 
 ## Three tiles east (or as far as the town goes): the town streams round
