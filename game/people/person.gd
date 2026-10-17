@@ -33,7 +33,7 @@ const HAIR_STYLES := {
 ## Clips that loop.
 const LOOPS := ["Idle", "Jump", "Sprint", "Jog_Fwd", "Walk", "Crouch_Idle", "Crouch_Fwd", "Driving", "Slide",
 	"Idle_TalkingPhone", "NinjaJump_Idle", "Sitting_Idle", "Idle_Talking", "Idle_FoldArms", "Push",
-	"Idle_Rail", "Pistol_Idle", "Pistol_Aim_Neutral", "Pistol_Aim_Up", "Pistol_Aim_Down", "Walk_Carry"]
+	"Idle_Rail", "Pistol_Idle", "Pistol_Aim_Neutral", "Pistol_Aim_Up", "Pistol_Aim_Down", "Walk_Carry", "Swim_Fwd"]
 ## Bones that make up each region, for the shader.
 const HEAD_BONES := ["Head", "neck_01"]
 const FOOT_BONES := ["foot_l", "foot_r", "ball_l", "ball_r", "ball_leaf_l", "ball_leaf_r"]

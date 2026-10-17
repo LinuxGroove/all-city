@@ -1181,8 +1181,6 @@ func _pose() -> void:
 				_play("ClimbUp_1m", 0.05, 0.67 / MANTLE_TIME)
 			else:
 				_play("Swim_Fwd", 0.15, absf(_c_v) / CLIMB_SPEED * 1.2)
-				if absf(_c_v) > 0.05 and not person.anim.is_playing():
-					person.play("Swim_Fwd", 0.0, 1.0, true)
 		State.PAINT:
 			_play("Pistol_Aim_Neutral", 0.2)
 		State.PICKED_UP:

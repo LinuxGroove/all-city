@@ -32,6 +32,9 @@ jobs:
       - name: Run tests
         timeout-minutes: 20
         run: godot --headless --path . tests/run_tests.tscn 2>&1 | tee test.log; ! grep -q "SCRIPT ERROR" test.log
+      - name: Play Monaco
+        timeout-minutes: 10
+        run: godot --headless --path . tools/play_check.tscn -- --town=monaco 2>&1 | tee play.log; ! grep -q "SCRIPT ERROR" play.log
 
   cartographer:
     name: Cartographer tests
