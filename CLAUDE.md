@@ -1,0 +1,85 @@
+# All City
+
+A third person skating and graffiti game in real towns built from OpenStreetMap, in Godot 4.7 with GDScript: skate, grind and climb a copy of your own town and paint it before the other crews do. The concept is idea 24 in [game-ideas](https://github.com/LinuxGroove/game-ideas/blob/main/ideas/24-all-city.md). It shares the LinuxGroove add-on with the other games; **read game-ideas' [online-addon.md](https://github.com/LinuxGroove/game-ideas/blob/main/online-addon.md) before touching online features or the shared add-on.** This is M0, the tech proof: one real town and one staircase, to find out whether a town built from the map is worth skating.
+
+## Commands
+
+```sh
+godot --headless --path . --import
+godot --headless --path . tools/check_scripts.tscn                  # every script compiles
+godot --headless --path . tests/run_tests.tscn                      # unit tests: the look and kit, the menus
+godot --headless --path . tests/run_tests.tscn -- --only=menu       # one set of tests/*_tests.gd (or one test_ method)
+godot --path . -- --town=<id>                                       # straight into a town (an id from Towns.list())
+godot --path . -- --yard                                            # straight to the yard (tools/yard.tscn)
+python3 -m unittest discover -s cartographer/tests -t .             # the Cartographer's tests (needs osmium, shapely, numpy, pillow)
+python tools/blender/build_art.py [set ...] [--only name,name]     # every model from one palette (a venv with the bpy wheel)
+xvfb-run -a -s "-screen 0 1600x900x24" godot --path . --resolution 1600x900 tools/art_preview.tscn -- --set=scene --out=/tmp/art.png [--time=dusk] [--view=stairs]
+VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json xvfb-run -a -s "-screen 0 1280x800x24" godot --path . --resolution 1280x800 tools/menu_shot.tscn -- --page=all --out=/tmp/menus
+python3 tools/make_icon.py                                          # the icon: icon.svg, the snap's copy and icon.png
+```
+
+TODO (lead): the Cartographer's own command (building a town from an extract into `towns/<id>/`).
+
+Run the script check and the tests before every commit, and the Cartographer's tests after changing `cartographer/`. A new `class_name` needs an `--import` before the script check finds it. Headless runs reimport assets and rewrite many `*.import` files; revert those (`git checkout -- '*.import'`) unless you meant to change them. Screenshots need software Vulkan (`mesa-vulkan-drivers`, `VK_ICD_FILENAMES` as above) to look like the game's Forward+ renderer; `menu_shot` and `art_preview` save what the viewport holds, so check their pictures with the menus' alpha dropped (menu_shot does).
+
+Before calling a build done, export it with the release template (`godot --headless --path . --export-release "Linux" /tmp/out/all-city.x86_64`) and run it headless for each entry point above: a release build segfaults on a method call on null that a source run only logs. To run the tests in a release build, export a copy of the project with `tests/*` dropped from `exclude_filter` and `run/main_scene` set to `res://tests/run_tests.tscn`.
+
+## Layout
+
+| Path | What |
+|---|---|
+| `game/game_config.gd` | `GAME_ID`, `TITLE`, the play test survey, setting defaults (camera, comfort, detail), input map |
+| `game/main.gd` | Startup: defaults, the launch ping, play tests, input, the theme, comfort, then the title or a developer shortcut (`plan()`) |
+| `game/look/` | `Look` (toon materials for each model role, the ink line, sky, sun and haze for each time of day), `Palette` (the swatches by name), the shaders |
+| `game/world/` | `Kit` (models by name with the game's materials), `Batch` (MultiMeshes of kit pieces), `Facade` (a building face from a recipe, with drainpipes and fire escapes to climb), `Stairs` (flights with their rails and copings), `Tube` (rails and pipes) |
+| `game/people/` | `Person`: a writer on skates, the Buff's crew, Civic or a passer-by, from the Universal Base Characters with the shared outfit shader |
+| `game/play/` | `Towns` (the towns this copy can play), `TownTiles` (reading a town's tiles). TODO (lead): the play scene |
+| `game/skater/` | TODO (lead): the skater |
+| `game/ui/` | `CityTheme`, `TitleScreen` (Play, How to play, Settings, About, Quit) and its `MenuBackdrop`, `HowToPanel`, `CitySettings`, `PauseMenu`, `TownCard` |
+| `game/net/online_server.gd` | Default game server; `SERVER_KEY` stays `defaultkey` in git |
+| `cartographer/` | The Cartographer (Python): turns an OpenStreetMap extract into a town folder of tiles. TODO (lead): its modules and the tile format (`docs/tiles.md`) |
+| `towns/<id>/` | Towns that come with the game: `town.json` and `tiles/`. Towns built since go in `user://towns/<id>/` |
+| `assets/art/palette.png` | The one palette every model is coloured from (written by `tools/blender/palette.py`) |
+| `assets/models/<set>/` | The kit: `street`, `stairs`, `facade`, `vehicles`, `gear`, each a GLB with its palette, made by `tools/blender/` |
+| `assets/people/` | Quaternius' Universal Base Characters, their hair and the Universal Animation Libraries, with their licence files |
+| `assets/fonts/` | Bungee (names, headings, buttons), Montserrat (text), Permanent Marker (tags), with their licences |
+| `addons/linuxgroove/` | Shared LinuxGroove add-on (settings, input, theme, LAN, online, names, play tests, launch ping, focus pause) |
+| `addons/com.heroiclabs.nakama/` | Vendored Nakama client with a local patch (see its `VENDORED.md`) |
+| `tests/run_tests.gd` | Headless test runner: runs every `tests/*_tests.gd`, each `test_*(t)` calling `t.check(ok, "what")` |
+| `tools/` | Script checker, `art_preview` (the kit in rows, or a whole street), `menu_shot` (every menu), `blender/` (the model scripts), the icon (`make_icon.py`, `svg_to_png.gd`), `version.sh`, `release.sh` |
+
+## How the game is built
+
+- **The town is the level.** Nobody builds levels: the Cartographer turns a dated OpenStreetMap extract into a town folder (`town.json` and tiles), once per town, and the game streams the tiles. Grind lines come from the map's own handrails, fences, walls, kerbs and ledges, plus rules (every flight of steps gets a rail, every roof a way up). `Towns.list()` finds the towns in `res://towns/` and `user://towns/`; `Towns.play(id)` opens one. TODO (lead): tiles, streaming, quarters.
+- **Attribution.** Towns are a produced work under OpenStreetMap's licence, so every town opens with a `TownCard` (the town's name, the map's date and "© OpenStreetMap contributors", big for a few seconds, then a corner line that fades), and About always carries the credit, the licence link and the elevation credit (`TitleScreen.ELEVATION_CREDIT`, kept equal to `cartographer/terrain.py`'s `ATTRIBUTION` by a test). Each `town.json` carries its own `attribution` lines, which the card shows. Never remove the credit from either place.
+- **Names, not addresses.** Streets and public landmarks keep their names; businesses show as what they are with made-up signs; house numbers never appear; a player picks a town, never a location. **The respect list:** homes, schools, places of worship, hospitals, cemeteries, police stations, shelters and memorials are never paintable, whatever the map says (`cartographer/respect.py`).
+- **The look.** Models are made by the Blender scripts in `tools/blender/` (`build_art.py [set]` builds every model from one palette); they face +z in the game, stand on y = 0, and carry four material roles: Palette (flat swatches), Wall (a swatch the game tints per building or car), Glass and Glow (lit at night). `Kit` swaps each role for `Look`'s toon shader when it loads a model; `Batch` draws many copies as MultiMeshes with a tint each. `Look.dress(node, time)` adds the sky, sun and ink line for `day`, `dusk` or `night` and sets the `night` shader global for lamps and windows. `tools/art_preview.tscn` shows a set or a whole street.
+- **Menus.** `CityTheme` is applied after `LGTheme`: Bungee for names, headings and buttons, Montserrat (a variable font: always give it a weight) for text, Permanent Marker for anything written by hand, ink panels and sticker buttons with a solid yellow focus, sized for 1280x800 on a handheld. Screens are built in code and expose `button_texts()` so tests can drive them; the title can list made-up towns (`towns_override`) and leave out its street (`with_backdrop`).
+- **The play scene's menus.** It calls `PauseMenu.attach(self)`, which answers the Pause action, pauses the tree, holds the sound (`LGAudio.pause_game`) and opens when the window loses focus (`LGFocusPause`); set `can_open` to keep it shut (results up) and `hold_tree = false` where the game must go on for others. It adds a `TownCard` under a CanvasLayer and calls `show_town(Towns.current)` when the town is up.
+- **Comfort** (Ken gets motion sick). The calm camera from Block Party: Skyway: behind and above, slow blends, a level horizon on wall rides and grinds, no shake, no roll, no head bob, no quick cuts, motion blur off; field of view and how far the camera swings behind are settings. Reduce flashing sets the `steady` shader global (`CitySettings.apply_comfort`) for the drone's searchlight and the paint's shine. Menus and backdrops follow the same rules: the title's street only drifts slowly sideways.
+- **Play tests.** The shared add-on's `LGPlaytest` records a play test when the Play test recording setting is on (or with `-- --playtest`): a picture every few seconds, game events, frame times and controls, the player's notes (F8, or Note this moment in the pause menu) and a survey when they quit, all in one zip in `user://playtest/`. Game events go through `LGPlaytest.event()` and `moment()`; the round's own survey questions are `GameConfig.PLAYTEST`. Quit through `LGScenes.quit()` so the survey comes first.
+- **Everything works offline.** No server or network is needed to reach the title and play a town the game has.
+- **Launch ping.** `game/main.gd` calls `LGLaunchPing.send(GameConfig.GAME_ID)` at startup: one anonymous request to the game server's `/launch` (game, random install id, version, OS, CPU) so the server counts every player. It's skipped headless, from source and with `DO_NOT_TRACK` set, and never blocks or retries. TODO (lead): register `all-city` on game-server before the first release.
+- TODO (lead): online (walls, crews, quarters as rooms), when it comes.
+
+## The shared add-on
+
+`addons/linuxgroove/` and `addons/com.heroiclabs.nakama/` are copies shared with [Foam Frenzy](https://github.com/LinuxGroove/foam-frenzy), [Graveyard Hollow](https://github.com/LinuxGroove/LampLighters), [Tiptoe](https://github.com/LinuxGroove/tiptoe), [Joyride Junction](https://github.com/LinuxGroove/joyride-junction), [Block Party: Skyway](https://github.com/LinuxGroove/block-party-skyway), [Race Day](https://github.com/LinuxGroove/race-day), [Verdigris Protocol](https://github.com/LinuxGroove/hull-bloom), [Burn Rate](https://github.com/LinuxGroove/burn-rate) and [Silver Tongue](https://github.com/LinuxGroove/silver-tongue). Fix shared behaviour in the add-on, not with a workaround here, keep it game-agnostic, and port the change to the other games in the same piece of work. When the change affects how games should use the add-on, update online-addon.md in game-ideas too. Keep the `_disconnect_peer` and `_close` patch in `NakamaMultiplayerPeer.gd` when updating nakama-godot. Silver Tongue's `llm/` and `voice/` stay in Silver Tongue.
+
+## Style
+
+- Match the surrounding code: `##` doc comments on classes and non-obvious functions, short comments only where the reason isn't obvious.
+- Connect signals with methods (or `bind`), not lambdas; a lambda on an autoload signal stays connected after its screen is freed.
+- Build pieces so tests can drive them without a scene change or a network: screens are built in code, `TitleScreen`, `PauseMenu` and `TownCard` run as plain children, and `main.gd`'s `plan()` says where a shortcut goes without going there.
+- Controller first: everything works with a pad, and the mouse and keyboard always work too. Painting and grinding need a held button and a steady stick, never a fast tap.
+- Player-facing text is plain and short, in the game's words (writers, crews, towns, quarters, walls, Flow, tags, the Buff, Civic).
+
+## Testing online
+
+TODO (lead): All City has no online play yet. When it does, prefer a local game server to `play.linuxgroove.com`, as online-addon.md describes. Device logs live in `~/snap/all-city/common/.local/share/all-city/logs/godot.log`.
+
+## Releases
+
+Pushing to `main` builds the snap and publishes it to the `edge` channel; a GitHub release publishes to `candidate`. The **Windows and macOS** workflow (`desktop.yml`) exports both from Linux with the `Windows Desktop` and `macOS` presets: pushes to `main` keep the zips as artifacts for 5 days, and releases get them attached. They aren't signed by Microsoft or Apple, and the release notes tell players how to open them. Every download carries `LICENSE`, `CREDITS.md` and the fonts' and characters' licences. CI injects the server key from the `GAME_SERVER_KEY` secret, so never commit the real key; `SERVER_KEY` stays `defaultkey` in git.
+
+Versions are `vYYYY.WW.MINOR`, derived from git by `tools/version.sh` (`2026.41.0` on a tag, `2026.41.0+3.g1a2b3c4d` after it); CI stamps it into `project.godot` before building and nobody edits it by hand. Make releases with the **Release** workflow (Actions, Release, Run workflow), which refuses commits whose CI hasn't passed. Commit subjects become the release notes, so write them for players.
