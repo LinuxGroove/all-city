@@ -1,0 +1,5 @@
+# The Cartographer's Python packages (python3 -m pip install -r cartographer/requirements.txt).
+osmium>=4.0
+shapely>=2.1
+numpy>=1.26
+pillow>=10.0

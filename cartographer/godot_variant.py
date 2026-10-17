@@ -6,6 +6,7 @@ Python values map to Godot types like this:
 - None, bool, int, float, str, dict, list: Nil, bool, int, float, String,
   Dictionary, Array
 - bytes: PackedByteArray
+- Vec2, Vec3 (below): Vector2, Vector3
 - numpy arrays: float32 1-D PackedFloat32Array, (n, 2) PackedVector2Array,
   (n, 3) PackedVector3Array; int32 PackedInt32Array; int64 PackedInt64Array;
   float64 PackedFloat64Array; uint8 PackedByteArray
@@ -21,6 +22,20 @@ PACKED_BYTE, PACKED_INT32, PACKED_INT64 = 29, 30, 31
 PACKED_FLOAT32, PACKED_FLOAT64 = 32, 33
 PACKED_VECTOR2, PACKED_VECTOR3 = 35, 36
 FLAG_64 = 1 << 16
+
+
+class Vec2(tuple):
+    """A Godot Vector2."""
+
+    def __new__(cls, x, y):
+        return tuple.__new__(cls, (float(x), float(y)))
+
+
+class Vec3(tuple):
+    """A Godot Vector3."""
+
+    def __new__(cls, x, y, z):
+        return tuple.__new__(cls, (float(x), float(y), float(z)))
 
 
 def _pad(n):
@@ -53,6 +68,10 @@ def _encode(v, out: bytearray):
     elif isinstance(v, str):
         b = v.encode("utf-8")
         out += struct.pack("<II", STRING, len(b)) + b + _pad(len(b))
+    elif isinstance(v, Vec2):
+        out += struct.pack("<Iff", VECTOR2, *v)
+    elif isinstance(v, Vec3):
+        out += struct.pack("<Ifff", VECTOR3, *v)
     elif isinstance(v, (bytes, bytearray)):
         out += struct.pack("<II", PACKED_BYTE, len(v)) + bytes(v) + _pad(len(v))
     elif isinstance(v, dict):
@@ -121,6 +140,10 @@ def _decode(m, i):
         (n,) = struct.unpack_from("<I", m, i)
         s = bytes(m[i + 4:i + 4 + n]).decode("utf-8")
         return s, i + 4 + n + (4 - n % 4) % 4
+    if t == VECTOR2:
+        return Vec2(*struct.unpack_from("<ff", m, i)), i + 8
+    if t == VECTOR3:
+        return Vec3(*struct.unpack_from("<fff", m, i)), i + 12
     if t == DICTIONARY:
         (n,) = struct.unpack_from("<I", m, i)
         i += 4

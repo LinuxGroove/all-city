@@ -92,6 +92,9 @@ static func lay(batch: Batch, a: Vector3, b: Vector3, storeys: int, rec: Diction
 	for s in storeys:
 		balconies.append(s > 0 and rng.randf() < float(style.balcony_row))
 	var ground := _ground_row(str(rec.get("ground", "home")), bays, style, rng)
+	if rec.get("ground", "") == "upper":
+		# The part of a wall above a lower neighbour: windows all the way down.
+		ground = columns.duplicate()
 	var escape_bay := -1
 	if bool(rec.get("escape", false)) and bool(style.escapes) and storeys >= 3 and bays >= 3:
 		escape_bay = rng.randi_range(1, bays - 2)
@@ -153,7 +156,8 @@ static func lay(batch: Batch, a: Vector3, b: Vector3, storeys: int, rec: Diction
 	return {"climbs": climbs, "crest": crest}
 
 
-## The ground floor's modules, bay by bay.
+## The ground floor's modules, bay by bay. Kinds are "shop", "home",
+## "blank" and "upper" (no ground floor: the face starts above a neighbour).
 static func _ground_row(kind: String, bays: int, style: Dictionary, rng: RandomNumberGenerator) -> Array[String]:
 	var row: Array[String] = []
 	var door := rng.randi() % bays
