@@ -23,7 +23,10 @@ const GRINDS := [Kind.HANDRAIL, Kind.LEDGE, Kind.KERB, Kind.RAIL, Kind.PARAPET, 
 ## id -> {"kind", "pts", "owner", "closed", "cells"}
 var _lines := {}
 ## Vector2i cell -> PackedInt32Array of [line id, segment, line id, segment, ...]
+## Cell -> segment refs, keyed by the cell less `_base`, so moving the whole
+## world by whole cells only moves `_base`.
 var _cells := {}
+var _base := Vector2i.ZERO
 ## owner -> Array of line ids
 var _owned := {}
 var _next_id := 1
@@ -103,7 +106,7 @@ func nearest(pos: Vector3, radius: float, kinds := []) -> Dictionary:
 	var best_point := Vector3.ZERO
 	for cx in range(x0, x1 + 1):
 		for cz in range(z0, z1 + 1):
-			var refs: PackedInt32Array = _cells.get(Vector2i(cx, cz), PackedInt32Array())
+			var refs: PackedInt32Array = _cells.get(Vector2i(cx, cz) - _base, PackedInt32Array())
 			for i in range(0, refs.size(), 2):
 				var l: Dictionary = _lines[refs[i]]
 				if mask != 0 and (mask & (1 << int(l.kind))) == 0:
@@ -220,18 +223,23 @@ func advance(id: int, seg: int, t: float, dist: float) -> Dictionary:
 ## Moves every line by `offset` (when the town re-centres the origin) and
 ## indexes them again.
 func shift(offset: Vector3) -> void:
-	_cells.clear()
+	var moved := Transform3D(Basis.IDENTITY, offset)
 	for id in _lines:
 		var l: Dictionary = _lines[id]
-		var pts: PackedVector3Array = l.pts
-		for i in pts.size():
-			pts[i] += offset
-		l.pts = pts
-		l.cells = []
+		l.pts = moved * (l.pts as PackedVector3Array)
+	var by := Vector2(offset.x, offset.z) / CELL
+	if by.is_equal_approx(by.round()):
+		_base += Vector2i(by.round())
+		return
+	# Not whole cells: index it all again.
+	_cells.clear()
+	_base = Vector2i.ZERO
+	for id in _lines:
 		_index(id)
 
 
 func clear() -> void:
+	_base = Vector2i.ZERO
 	_lines.clear()
 	_cells.clear()
 	_owned.clear()
@@ -243,11 +251,12 @@ func _index(id: int) -> void:
 	var touched := {}
 	for seg in pts.size() - 1:
 		for cell in _cells_of(pts[seg], pts[seg + 1]):
-			var refs: PackedInt32Array = _cells.get(cell, PackedInt32Array())
+			var key := cell - _base
+			var refs: PackedInt32Array = _cells.get(key, PackedInt32Array())
 			refs.append(id)
 			refs.append(seg)
-			_cells[cell] = refs
-			touched[cell] = true
+			_cells[key] = refs
+			touched[key] = true
 	l.cells = touched.keys()
 
 

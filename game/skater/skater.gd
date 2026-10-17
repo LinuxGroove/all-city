@@ -306,6 +306,18 @@ func place(at: Vector3, face := Vector3.FORWARD) -> void:
 	_update_body(0.0)
 
 
+## Moves the skater with the world when the town moves back round its
+## origin (TownView.shifted), mid-move or not.
+func shift(by: Vector3) -> void:
+	global_position += by
+	_last_safe += by
+	_c_base += by
+	_c_top += by
+	_c_from += by
+	_c_to += by
+	reset_physics_interpolation()
+
+
 ## The state as a word, for the HUD and play tests.
 func state_name() -> String:
 	return STATE_NAMES[state]

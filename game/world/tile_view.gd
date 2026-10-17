@@ -10,6 +10,8 @@ var key := Vector2i.ZERO
 var corner := Vector3.ZERO
 var near := false
 var detail: Node3D
+## The plan's quarter grid, kept when the plan goes.
+var quarters := PackedInt32Array()
 
 var _todo: Array[Callable] = []
 var _ctx := {}
@@ -22,6 +24,7 @@ static func from_plan(p: TilePlan, ctx: Dictionary) -> TileView:
 	view.key = p.key
 	view.corner = p.corner
 	view.near = p.near
+	view.quarters = p.quarters
 	view.name = "Tile_%d_%d" % [p.key.x, p.key.y]
 	view._ctx = ctx
 	view._todo = [view._make_ground, view._make_water, view._make_shells]

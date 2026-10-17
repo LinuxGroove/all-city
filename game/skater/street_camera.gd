@@ -113,6 +113,14 @@ func snap() -> void:
 	_place(0.0)
 
 
+## Moves the camera with the world when the town moves back round its
+## origin, so nothing on screen jumps.
+func shift(by: Vector3) -> void:
+	position += by
+	focus += by
+	_focus_y += by.y
+
+
 func _process(delta: float) -> void:
 	if target == null or not is_instance_valid(target):
 		return

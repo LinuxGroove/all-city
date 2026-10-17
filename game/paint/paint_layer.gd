@@ -84,6 +84,13 @@ func show_quarter(quarter: int, records: Dictionary, now: int) -> void:
 			show_paint(id, records[id], now)
 
 
+## Takes away paint on walls `walls` no longer has (their tile went).
+func prune() -> void:
+	for id in _shown.keys():
+		if walls == null or walls.face(id).is_empty():
+			remove_paint(id)
+
+
 ## The wall ids showing paint.
 func shown() -> PackedStringArray:
 	return PackedStringArray(_shown.keys())

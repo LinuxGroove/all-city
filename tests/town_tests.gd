@@ -78,15 +78,26 @@ func test_town_streams(t) -> void:
 	t.check(view.shown().get(key, false), "the tile ahead comes in, in detail")
 	t.check(view.tiles.size() > 9, "the far ring is shown too (%d tiles)" % view.tiles.size())
 	# Getting far from the origin moves the world back round the player.
-	var id: int = view.lines.ids()[0]
+	var id: int = view.lines.nearest(at, 300.0).id
 	var before: Vector3 = view.lines.line(id).pts[0]
-	var tile: TileView = view.tiles.values()[0]
+	var tile: TileView = view.tiles[view.key_at(at)]
 	var tile_at := tile.position
-	var moved := view.follow(Vector3(TownView.RECENTRE + 40.0, at.y, 0))
-	t.check(moved == Vector3(-512.0, 0, 0), "the world moves back by whole tiles (%s)" % str(moved))
-	t.check(view.origin == Vector3(512.0, 0, 0), "and the origin moves on as far")
+	# Out past the limit but still in the spawn's tile, so nothing is dropped.
+	var go := Vector3(-(TownView.RECENTRE + 8.0), at.y, at.z)
+	t.check(view.key_at(go) == view.key_at(at), "the test's far point is in the spawn's tile")
+	var moved := view.follow(go)
+	t.check(moved == Vector3(512.0, 0, 0), "the world moves back by whole tiles (%s)" % str(moved))
+	t.check(view.origin == Vector3(-512.0, 0, 0), "and the origin moves on as far")
 	t.check(view.lines.line(id).pts[0].is_equal_approx(before + moved), "grind lines move with it")
 	t.check(tile.position.is_equal_approx(tile_at + moved), "tiles move with it")
+	var found := view.lines.nearest(view.lines.line(id).pts[0], 0.3)
+	t.check(not found.is_empty(), "lines are found where they've moved to")
+	t.check(view.lines.nearest(before, 0.3, [view.lines.line(id).kind]).get("id", -1) != id or before == view.lines.line(id).pts[0],
+			"and no longer where they were")
+	var moved_wall: Dictionary = view.walls.face(view.walls._faces.keys()[0])
+	var wall_mid: Vector3 = (moved_wall.a + moved_wall.b) * 0.5
+	var wall_hit := view.walls.nearest(wall_mid + (moved_wall.b - moved_wall.a).cross(Vector3.UP).normalized() * 0.5, 2.0)
+	t.check(not wall_hit.is_empty(), "walls are found where they've moved to")
 	var p: Array = town.spawn.p
 	t.check(view.to_town(view.spawn().p).is_equal_approx(Vector3(p[0], p[1], p[2])),
 			"the town's own places stay where they are")

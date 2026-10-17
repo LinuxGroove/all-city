@@ -15,6 +15,9 @@ extends RefCounted
 const SIZE := 256.0
 const CELLS := 64
 const CELL := 4.0
+## The quarter grid: QUARTER_CELLS cells of QUARTER_CELL metres a side.
+const QUARTER_CELLS := 8
+const QUARTER_CELL := 32.0
 ## How far the plain shell sits inside the facade's face (the facade kit's
 ## walls are 0.3 m thick), and how far it goes into the ground.
 const SHELL_INSET := 0.25
@@ -41,6 +44,8 @@ var corner := Vector3.ZERO
 var near := false
 ## Heights every CELL metres, (CELLS + 1) squared, rows running south.
 var heights := PackedFloat32Array()
+## The quarter of each 32 m cell, QUARTER_CELLS squared, rows running south.
+var quarters := PackedInt32Array()
 ## The ground's mesh arrays and its cover picture (an Image, mipmapped).
 var ground := []
 var cover: Image
@@ -77,6 +82,7 @@ static func make(tile: Dictionary, with_detail: bool, ctx: Dictionary) -> TilePl
 	plan.corner = Vector3(float(tile.x0), 0.0, float(tile.z0))
 	plan.near = with_detail
 	plan.heights = tile.heights
+	plan.quarters = tile.get("quarters", PackedInt32Array())
 	plan._ground(tile)
 	plan._water(tile.water)
 	plan._shells(tile.buildings)

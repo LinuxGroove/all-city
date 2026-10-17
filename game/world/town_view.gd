@@ -118,6 +118,38 @@ func from_town(town_pos: Vector3) -> Vector3:
 	return town_pos - origin
 
 
+## The quarter a place is in (its id in the manifest), or -1 where no
+## tile is shown.
+func quarter_at(local: Vector3) -> int:
+	var key := key_at(local)
+	var tv: TileView = tiles.get(key)
+	if tv == null or tv.quarters.size() < TilePlan.QUARTER_CELLS * TilePlan.QUARTER_CELLS:
+		return -1
+	var p := local + origin - tv.corner
+	var col := clampi(floori(p.x / TilePlan.QUARTER_CELL), 0, TilePlan.QUARTER_CELLS - 1)
+	var row := clampi(floori(p.z / TilePlan.QUARTER_CELL), 0, TilePlan.QUARTER_CELLS - 1)
+	return tv.quarters[row * TilePlan.QUARTER_CELLS + col]
+
+
+## A quarter's name from the manifest, or "".
+func quarter_name(id: int) -> String:
+	for q in town.get("quarters", []):
+		if int(q.id) == id:
+			return str(q.get("name", ""))
+	return ""
+
+
+## The quarters a shown tile's walls are in.
+func quarters_of(key: Vector2i) -> PackedInt32Array:
+	var out := PackedInt32Array()
+	var tv: TileView = tiles.get(key)
+	if tv:
+		for q in tv.quarters:
+			if not out.has(q):
+				out.append(q)
+	return out
+
+
 ## Where the town says a writer starts, in the scene: {"p", "yaw"}.
 func spawn() -> Dictionary:
 	var s: Dictionary = town.get("spawn", {"p": [0, 0, 0], "yaw": 0.0})

@@ -32,7 +32,10 @@ var _owner_of := {}
 ## owner -> {id: true}
 var _owned := {}
 ## Vector2i cell -> {id: true}
+## Cell -> {wall id: true}, keyed by the cell less `_base`, so moving the
+## whole world by whole cells only moves `_base`.
 var _cells := {}
+var _base := Vector2i.ZERO
 
 
 ## Adds a face (a copy of it), replacing any face with the same id.
@@ -124,23 +127,31 @@ static func paint_height(face: Dictionary) -> float:
 
 ## Moves every face by `offset`, when the world's origin is re-centred.
 func shift(offset: Vector3) -> void:
-	_cells.clear()
 	for id in _faces:
 		var f: Dictionary = _faces[id]
 		f.a += offset
 		f.b += offset
 		f.base += offset.y
 		f.top += offset.y
+	var by := Vector2(offset.x, offset.z) / CELL
+	if by.is_equal_approx(by.round()):
+		_base += Vector2i(by.round())
+		return
+	# Not whole cells: index it all again.
+	_cells.clear()
+	_base = Vector2i.ZERO
+	for id in _faces:
 		_index(id)
 
 
 func _remove(id: String) -> void:
 	var f: Dictionary = _faces[id]
 	for c in _cells_of(f):
-		if _cells.has(c):
-			_cells[c].erase(id)
-			if _cells[c].is_empty():
-				_cells.erase(c)
+		var key := c - _base
+		if _cells.has(key):
+			_cells[key].erase(id)
+			if _cells[key].is_empty():
+				_cells.erase(key)
 	var owner: String = _owner_of[id]
 	if _owned.has(owner):
 		_owned[owner].erase(id)
@@ -150,9 +161,10 @@ func _remove(id: String) -> void:
 
 func _index(id: String) -> void:
 	for c in _cells_of(_faces[id]):
-		if not _cells.has(c):
-			_cells[c] = {}
-		_cells[c][id] = true
+		var key := c - _base
+		if not _cells.has(key):
+			_cells[key] = {}
+		_cells[key][id] = true
 
 
 ## The cells a face passes through: those in its bounding box whose
@@ -178,7 +190,7 @@ func _near_ids(pos: Vector3, radius: float) -> Array:
 	var found := {}
 	for i in range(lo.x, hi.x + 1):
 		for j in range(lo.y, hi.y + 1):
-			var c := Vector2i(i, j)
-			if _cells.has(c):
-				found.merge(_cells[c])
+			var key := Vector2i(i, j) - _base
+			if _cells.has(key):
+				found.merge(_cells[key])
 	return found.keys()
