@@ -80,12 +80,17 @@ jobs:
           "$GODOT" --headless --path . --export-release "Windows Desktop" "build/windows/$slug.exe"
           "$GODOT" --headless --path . --export-release "macOS" "build/macos/$slug.zip"
           test -s "build/windows/$slug.exe" && test -s "build/macos/$slug.zip"
-          # Each zip carries the license and credits next to the game.
+          # Each zip carries the license and credits next to the game, and
+          # the fonts' and characters' own licences.
+          mkdir -p build/extra/licences
+          cp assets/fonts/*.txt assets/people/*License.txt build/extra/licences/
           win="dist/$slug-$version-windows-x86_64.zip"
-          (cd build/windows && cp ../../LICENSE ../../CREDITS.md . && zip -q -9 "../../$win" "$slug.exe" LICENSE CREDITS.md)
+          (cd build/windows && cp ../../LICENSE ../../CREDITS.md . && cp -r ../extra/licences . \
+            && zip -q -9 -r "../../$win" "$slug.exe" LICENSE CREDITS.md licences)
           mac="dist/$slug-$version-macos.zip"
           cp "build/macos/$slug.zip" "$mac"
           zip -q -j "$mac" LICENSE CREDITS.md
+          (cd build/extra && zip -q -r "../../$mac" licences)
           unzip -l "$win"
           unzip -l "$mac" | tail -3
           echo "SLUG=$slug" >> "$GITHUB_ENV"
