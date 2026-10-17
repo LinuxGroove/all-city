@@ -24,6 +24,7 @@ const BLOCK := 128.0
 const ROOFS := {"brick": "slate", "plaster": "stone", "modern": "concrete_light", "works": "steel_dark"}
 const STAIR_WALLS := ["stone", "concrete_light", "cream", "concrete"]
 const GARDEN_WALLS := ["brick", "stone", "concrete_light", "cream", "brick_dark"]
+const RAIL_RADIUS := 0.03
 ## Street props that block the way: a post of a radius, or the model's box;
 ## a ledge is a grind line along the front of the top.
 const PROP_SOLIDS := {
@@ -58,6 +59,8 @@ var steps := {}
 ## [kind ("post" or "box"), size (Vector3; x is a post's radius), Transform3D].
 var solid_faces := PackedVector3Array()
 var shapes: Array = []
+## Handrails down the flights, drawn as tubes with the street's rails.
+var rails: Array[PackedVector3Array] = []
 ## For the town's registries, in town coordinates: [Lines.Kind, points],
 ## the paintable faces as Walls takes them, and the lanes {"pts", "kind"}.
 var grind_lines: Array = []
@@ -181,6 +184,14 @@ static func wall_colour(b: Dictionary) -> Color:
 	return Facade.recipe(str(b.style), "home", int(b.seed)).wall
 
 
+## The height of a building's flat roof: level with the top of its cornice
+## when a parapet stands on that, so the parapet is a hop high, as on a
+## real roof; otherwise where the walls end.
+static func deck(b: Dictionary) -> float:
+	var style: Dictionary = Facade.STYLES.get(str(b.style), Facade.STYLES.plaster)
+	return crest(b) - 0.95 if style.top.has("parapet") else float(b.top)
+
+
 ## How high a building's facade reaches: its roof plus the style's cornice
 ## and parapet.
 static func crest(b: Dictionary) -> float:
@@ -204,7 +215,8 @@ func _shells(buildings: Array) -> void:
 	for b in buildings:
 		var colour := wall_colour(b)
 		var y0 := float(b.y0) - BURY
-		var top := float(b.top)
+		var top := deck(b)
+		var storey_top := float(b.top)
 		var seed_uv := float(int(b.seed) % 997)
 		var outer := true
 		for ring in b.rings:
@@ -223,9 +235,11 @@ func _shells(buildings: Array) -> void:
 				walls.set_color(colour)
 				walls.set_normal(normal)
 				walls.set_uv2(Vector2(seed_uv, float(b.storeys)))
+				var v_top := storey_top - top
+				var v_low := storey_top - y0
 				_quad_uv(walls, [Vector3(lo_a.x, top, lo_a.z), Vector3(lo_b.x, top, lo_b.z), lo_b, lo_a],
-						[Vector2(along, 0.0), Vector2(along + length, 0.0), Vector2(along + length, top - y0),
-						Vector2(along, top - y0)], normal)
+						[Vector2(along, v_top), Vector2(along + length, v_top), Vector2(along + length, v_low),
+						Vector2(along, v_low)], normal)
 				along += length
 		# The roof, from the Cartographer's triangles over the outline.
 		var flat := _flat_rings(b.rings, top)
@@ -303,6 +317,10 @@ func _detail(tile: Dictionary, ctx: Dictionary) -> void:
 		counts.bars += 1
 	for p in tile.props:
 		_prop(p, prop_batch, ctx)
+	for rail in rails:
+		tube_tool.set_uv(Palette.uv("chrome"))
+		Tube.add_to(tube_tool, rail, RAIL_RADIUS, 8)
+		counts.tubes += 1
 	for lane in tile.lanes:
 		if not bool(lane.get("bridge", false)):
 			lanes.append({"pts": lane.pts, "kind": str(lane.kind)})
@@ -363,8 +381,11 @@ func _building(b: Dictionary, blocks: Dictionary, prop_batch: Batch) -> void:
 			chain[chain.size() - 1] = (chain[chain.size() - 1] + p0) * 0.5
 		chain.append(p1)
 	_end_chain(chain)
+	var roof_y := deck(b)
 	for p in b.props:
-		prop_batch.add(str(p.m), Transform3D(Basis(Vector3.UP, float(p.yaw)), p.p - corner))
+		var at: Vector3 = p.p - corner
+		at.y = roof_y
+		prop_batch.add(str(p.m), Transform3D(Basis(Vector3.UP, float(p.yaw)), at))
 	# Collision: the walls on the outline up to the facade's top, and the roof.
 	var y0 := float(b.y0) - BURY
 	for ring in b.rings:
@@ -376,7 +397,7 @@ func _building(b: Dictionary, blocks: Dictionary, prop_batch: Batch) -> void:
 			var a_hi := Vector3(a.x, top_crest, a.z)
 			var c_hi := Vector3(c.x, top_crest, c.z)
 			solid_faces.append_array(PackedVector3Array([a, c, c_hi, a, c_hi, a_hi]))
-	var flat := _flat_rings(b.rings, float(b.top))
+	var flat := _flat_rings(b.rings, roof_y)
 	var roof: PackedInt32Array = b.tris
 	for k in range(0, roof.size(), 3):
 		solid_faces.append(flat[roof[k]])
@@ -396,9 +417,14 @@ func _flight(f: Dictionary, step_batch: Batch) -> void:
 	var laid := Stairs.lay(step_batch, bottom, up, int(f.steps), float(f.width), tint, bool(f.walls), float(f.rise),
 			float(f.going))
 	for rail in laid.rails:
-		grind_lines.append([Lines.Kind.HANDRAIL, _to_town(rail)])
+		# Wheels ride on top of the tube.
+		var wheels := PackedVector3Array([rail[0] + Vector3.UP * RAIL_RADIUS, rail[1] + Vector3.UP * RAIL_RADIUS])
+		grind_lines.append([Lines.Kind.HANDRAIL, _to_town(wheels)])
+		rails.append(rail)
+		Street.solid_bar(solid_faces, rail[0], rail[1], RAIL_RADIUS, -RAIL_RADIUS * 2.0, RAIL_RADIUS)
 	for coping in laid.copings:
 		grind_lines.append([Lines.Kind.COPING, _to_town(coping)])
+		Street.solid_bar(solid_faces, coping[0], coping[1], 0.21, -1.8, 0.0)
 	var ramp := Stairs.ramp_box(bottom, up, int(f.steps), float(f.width), float(f.rise), float(f.going))
 	shapes.append(["box", ramp[1], ramp[0]])
 

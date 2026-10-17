@@ -18,6 +18,8 @@ static var current := {}
 static func list() -> Array[Dictionary]:
 	var found := {}
 	for root in [BUNDLED, BUILT]:
+		if not DirAccess.dir_exists_absolute(root):
+			continue
 		for id in DirAccess.get_directories_at(root):
 			var town := read(root.path_join(id))
 			if not town.is_empty():

@@ -29,6 +29,8 @@ func _ready() -> void:
 	var view := TownView.new()
 	add_child(view)
 	view.open(town, int(_opts.get("detail", "1")))
+	# Pictures needn't keep frames smooth.
+	view.make_budget = 500000
 	var views := str(_opts.get("views", _opts.get("view", "spawn"))).split(",")
 	var out := str(_opts.get("out", "/tmp/town.png"))
 	var cam := Camera3D.new()
@@ -42,9 +44,12 @@ func _ready() -> void:
 		var t0 := Time.get_ticks_msec()
 		view.load_around(where.p)
 		var near_ms := Time.get_ticks_msec() - t0
+		# Draw nothing while the rest streams in: software rendering is slow.
+		get_viewport().disable_3d = true
 		while not view.settled():
 			view.follow(where.p)
 			await get_tree().process_frame
+		get_viewport().disable_3d = false
 		var all_ms := Time.get_ticks_msec() - t0
 		cam.global_transform = where.xf
 		for i in 30:

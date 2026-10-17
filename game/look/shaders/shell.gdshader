@@ -20,8 +20,9 @@ void fragment() {
 	float aa = fwidth(UV.x) * 0.5;
 	float window = smoothstep(0.24 - aa, 0.24 + aa, f.x) * (1.0 - smoothstep(0.76 - aa, 0.76 + aa, f.x))
 			* smoothstep(0.2, 0.22, f.y) * (1.0 - smoothstep(0.72, 0.74, f.y));
-	// The ground floor (and the wall below it on a slope) gets none.
-	window *= step(cell.y + 1.5, UV2.y);
+	// The ground floor (and the wall below it on a slope) gets none, nor the
+	// band above the top storey.
+	window *= step(cell.y + 1.5, UV2.y) * step(0.0, cell.y);
 	ALBEDO = mix(COLOR.rgb, glass, window);
 	ROUGHNESS = 0.9;
 	float on = step(hash(cell + vec2(UV2.x, 0.0)), lit_share) * night * window;

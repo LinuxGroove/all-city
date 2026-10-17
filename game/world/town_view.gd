@@ -34,6 +34,8 @@ var traffic: Traffic
 ## Vector2i -> TileView
 var tiles := {}
 var detail := 1
+## How long a frame may spend making tiles into nodes, in microseconds.
+var make_budget := 4000
 
 var _ctx := {}
 var _have := {}
@@ -272,9 +274,9 @@ func _poll() -> void:
 ## Makes the tiles waiting to be nodes, a few milliseconds a frame.
 func _make_some() -> void:
 	var t0 := Time.get_ticks_usec()
-	while not _making.is_empty() and Time.get_ticks_usec() - t0 < 4000:
+	while not _making.is_empty() and Time.get_ticks_usec() - t0 < make_budget:
 		var tv := _making[0]
-		if tv.step(4000 - (Time.get_ticks_usec() - t0)):
+		if tv.step(make_budget - (Time.get_ticks_usec() - t0)):
 			_making.pop_front()
 			tv.visible = true
 			_attach(tv)
