@@ -11,6 +11,8 @@ godot --headless --path . tests/run_tests.tscn                      # unit tests
 godot --headless --path . tests/run_tests.tscn -- --only=menu       # one set of tests/*_tests.gd (or one test_ method)
 godot --path . -- --town=<id>                                       # straight into a town (an id from Towns.list())
 godot --path . -- --yard                                            # straight to the yard (tools/yard.tscn)
+godot --headless --path . tools/play_check.tscn -- --town=monaco     # the play scene plays itself: skates, grinds, climbs, tags, streams 768 m
+godot --path . tools/paint_yard.tscn                                # a street to try painting on (and tools/paint_check.tscn, the two-machine and Buff proofs)
 python3 -m unittest discover -s cartographer/tests -t .             # the Cartographer's tests (needs osmium, shapely, numpy, pillow)
 python tools/blender/build_art.py [set ...] [--only name,name]     # every model from one palette (a venv with the bpy wheel)
 xvfb-run -a -s "-screen 0 1600x900x24" godot --path . --resolution 1600x900 tools/art_preview.tscn -- --set=scene --out=/tmp/art.png [--time=dusk] [--view=stairs]
@@ -18,7 +20,15 @@ VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json xvfb-run -a -s "-screen 0 
 python3 tools/make_icon.py                                          # the icon: icon.svg, the snap's copy and icon.png
 ```
 
-TODO (lead): the Cartographer's own command (building a town from an extract into `towns/<id>/`).
+The Cartographer builds a town from an OpenStreetMap extract (the OSM hosts are blocked from the cloud container, so bring a `.osm.pbf` from Geofabrik or BBBike):
+
+```sh
+pip install -r cartographer/requirements.txt                        # osmium, shapely, numpy, pillow
+python3 -m cartographer build Monaco --pbf monaco.osm.pbf --lat 43.7384 --lon 7.4246 --country mc --out towns/monaco   # about 25 s, 5 MB
+python3 -m cartographer build "Hebden Bridge"                       # finds it, fetches its extract, builds into the game's towns folder
+python3 -m cartographer map towns/monaco [--shade=eyes|respect]     # draws a built town
+python3 -m cartographer info towns/monaco                           # its numbers
+```
 
 Run the script check and the tests before every commit, and the Cartographer's tests after changing `cartographer/`. A new `class_name` needs an `--import` before the script check finds it. Headless runs reimport assets and rewrite many `*.import` files; revert those (`git checkout -- '*.import'`) unless you meant to change them. Screenshots need software Vulkan (`mesa-vulkan-drivers`, `VK_ICD_FILENAMES` as above) to look like the game's Forward+ renderer; `menu_shot` and `art_preview` save what the viewport holds, so check their pictures with the menus' alpha dropped (menu_shot does).
 
@@ -31,13 +41,14 @@ Before calling a build done, export it with the release template (`godot --headl
 | `game/game_config.gd` | `GAME_ID`, `TITLE`, the play test survey, setting defaults (camera, comfort, detail), input map |
 | `game/main.gd` | Startup: defaults, the launch ping, play tests, input, the theme, comfort, then the title or a developer shortcut (`plan()`) |
 | `game/look/` | `Look` (toon materials for each model role, the ink line, sky, sun and haze for each time of day), `Palette` (the swatches by name), the shaders |
-| `game/world/` | `Kit` (models by name with the game's materials), `Batch` (MultiMeshes of kit pieces), `Facade` (a building face from a recipe, with drainpipes and fire escapes to climb), `Stairs` (flights with their rails and copings), `Tube` (rails and pipes) |
+| `game/world/` | `Kit` (models by name with the game's materials), `Batch` (MultiMeshes of kit pieces), `Facade` (a building face from a recipe, with drainpipes and fire escapes to climb), `Stairs` (flights with their rails and copings), `Tube` (rails and pipes), `Street` (kerb, fence and bar geometry), `Lines` (the grind lines) and `Walls` (the paintable faces), both indexed by 8 m cells; `TilePlan` (a tile worked out as plain arrays, safe on a worker thread), `TileView` (made into nodes a few milliseconds a frame), `TownView` (streams the tiles round the player and moves the world back round the origin), `Traffic` (cars on the streets' lanes) |
 | `game/people/` | `Person`: a writer on skates, the Buff's crew, Civic or a passer-by, from the Universal Base Characters with the shared outfit shader |
-| `game/play/` | `Towns` (the towns this copy can play), `TownTiles` (reading a town's tiles). TODO (lead): the play scene |
-| `game/skater/` | TODO (lead): the skater |
-| `game/ui/` | `CityTheme`, `TitleScreen` (Play, How to play, Settings, About, Quit) and its `MenuBackdrop`, `HowToPanel`, `CitySettings`, `PauseMenu`, `TownCard` |
+| `game/play/` | `Towns` (the towns this copy can play), `TownTiles` (reading a town's tiles), `play.tscn` (a night in a town: `Play` wires the streamed town, the skater, the paint, the HUD and the menus) |
+| `game/skater/` | `Skater` (every move on the physics tick), `SkaterInput` (one tick of controls; tests fill it), `StreetCamera` (the calm camera) |
+| `game/paint/` | `PaintRules` (the server's rules: ranks, life, the Buff), `TagKit` (a name as a tag or throw-up), `PaintLayer` (the paint on the walls, `paint.gdshader`), `WallStore` (every wall of a town, local and the server's), `PaintAction` (a writer painting), `PaintInput` |
+| `game/ui/` | `CityTheme`, `TitleScreen` (Play, How to play, Settings, About, Quit) and its `MenuBackdrop`, `HowToPanel`, `CitySettings`, `PauseMenu`, `TownCard`, `PlayHud` (Flow, the line, the quarter, the paint's line) |
 | `game/net/online_server.gd` | Default game server; `SERVER_KEY` stays `defaultkey` in git |
-| `cartographer/` | The Cartographer (Python): turns an OpenStreetMap extract into a town folder of tiles. TODO (lead): its modules and the tile format (`docs/tiles.md`) |
+| `cartographer/` | The Cartographer (Python): turns an OpenStreetMap extract into a town folder of tiles (`osm`, `buildings`, `lines`, `ground`, `water`, `terrain`, `network`, `quarters`, `eyes`, `respect`, `props`, `tiles`, `build`, `cli`); the tile format is in `docs/tiles.md` |
 | `towns/<id>/` | Towns that come with the game: `town.json` and `tiles/`. Towns built since go in `user://towns/<id>/` |
 | `assets/art/palette.png` | The one palette every model is coloured from (written by `tools/blender/palette.py`) |
 | `assets/models/<set>/` | The kit: `street`, `stairs`, `facade`, `vehicles`, `gear`, each a GLB with its palette, made by `tools/blender/` |
@@ -46,11 +57,16 @@ Before calling a build done, export it with the release template (`godot --headl
 | `addons/linuxgroove/` | Shared LinuxGroove add-on (settings, input, theme, LAN, online, names, play tests, launch ping, focus pause) |
 | `addons/com.heroiclabs.nakama/` | Vendored Nakama client with a local patch (see its `VENDORED.md`) |
 | `tests/run_tests.gd` | Headless test runner: runs every `tests/*_tests.gd`, each `test_*(t)` calling `t.check(ok, "what")` |
-| `tools/` | Script checker, `art_preview` (the kit in rows, or a whole street), `menu_shot` (every menu), `blender/` (the model scripts), the icon (`make_icon.py`, `svg_to_png.gd`), `version.sh`, `release.sh` |
+| `tools/` | Script checker, `play_check` (the play scene plays itself), `town_shot` (a town from the air or the street), `yard` (a street to skate on) and `paint_yard` / `paint_check` (a street to paint on, and the two-machine and Buff proofs), `art_preview` (the kit in rows, or a whole street), `menu_shot` (every menu), `blender/` (the model scripts), the icon (`make_icon.py`, `svg_to_png.gd`), `version.sh`, `release.sh` |
 
 ## How the game is built
 
-- **The town is the level.** Nobody builds levels: the Cartographer turns a dated OpenStreetMap extract into a town folder (`town.json` and tiles), once per town, and the game streams the tiles. Grind lines come from the map's own handrails, fences, walls, kerbs and ledges, plus rules (every flight of steps gets a rail, every roof a way up). `Towns.list()` finds the towns in `res://towns/` and `user://towns/`; `Towns.play(id)` opens one. TODO (lead): tiles, streaming, quarters.
+- **The town is the level.** Nobody builds levels: the Cartographer turns a dated OpenStreetMap extract into a town folder (`town.json` and tiles), once per town, and the game streams the tiles. Grind lines come from the map's own handrails, fences, walls, kerbs and ledges, plus rules (every flight of steps gets a rail, every roof a way up). `Towns.list()` finds the towns in `res://towns/` and `user://towns/`; `Towns.play(id)` opens one. The tile format is in `docs/tiles.md`.
+- **Tiles and streaming.** A town is cut into 256 m tiles in metres from its middle (x east, z south). `TownView` keeps the tiles within one tile of the player in full detail (facades, steps, props, collision, grind lines, walls and traffic lanes) and three out as scenery (ground, water, shells, roofs). A worker thread reads a tile and works it out as plain arrays (`TilePlan`); it must never touch the RenderingServer, since in the Single-Safe model a worker's server calls wait for the frame. The main thread makes nodes from the plan in stages inside a time budget (`TileView.step`), so a tile streaming in never stalls a frame. Detail drops a tile later than it comes. Registries (`Lines`, `Walls`, `Traffic`) are owned by tile key, so a tile's replacement takes its own lines away.
+- **Re-centring.** The scene works near its own origin (`TownView.origin` is where it is in the town): when the player is more than 384 m from it, the origin moves by whole tiles and everything moves back (`recentre`): tiles, `Lines`, `Walls` (by moving a cell base, not re-indexing), `Traffic`, and whatever listens to `shifted` (the skater, the camera, the paint). Anything new that holds a world position needs a `shift(by)` and a connection to `shifted`. Town coordinates are only for the manifest and the server: `view.to_town()` / `from_town()`.
+- **The skater** (`Skater`, a `CharacterBody3D`) has its own state machine (skate, air, grind, wall, climb, paint, picked up) tuned in constants at the top of `skater.gd`, steps on the physics tick from `input` (`SkaterInput`; the play scene fills it, tests fill it themselves) and grinds `Lines`: handrails and stair copings, kerbs, ledges, fences, parapets and roof edges, rails and wires, and climbs `Kind.CLIMB` lines (drainpipes and fire escapes) up to a mantle onto the roof. Flow builds from moves and lines of moves; a long fall costs Flow and a stumble, never a life.
+- **The play scene** (`game/play/play.gd`) builds one night: `TownView` round the town's spawn, the `Skater` on the town's `Lines`, `StreetCamera`, a `PaintLayer` over the town's `Walls`, a `WallStore` (the server's walls when online play is on, `user://walls/<town>.json` otherwise), a `PaintAction` for the writer, the HUD, the pause menu and the town card. Each physics tick it calls `view.follow(skater.position)`, which streams tiles and re-centres. When a near tile comes in, it shows the paint on its quarters' walls and reads the quarters from the store.
+- **Painting.** Hold Paint at a wall that takes it (not on the respect list, in reach, facing it) and push the stick along the guide; rush the corners and it wobbles, linger and it drips. `WallStore` keeps every wall's record as the server does (writer, rank, kit, grade, when), runs the same rules offline (`PaintRules`: who can go over whose, the Buff at the town's dawn), and sends paint when online. A tag stays until the Buff takes it, and shows on every copy of the town that reads the quarter.
 - **Attribution.** Towns are a produced work under OpenStreetMap's licence, so every town opens with a `TownCard` (the town's name, the map's date and "© OpenStreetMap contributors", big for a few seconds, then a corner line that fades), and About always carries the credit, the licence link and the elevation credit (`TitleScreen.ELEVATION_CREDIT`, kept equal to `cartographer/terrain.py`'s `ATTRIBUTION` by a test). Each `town.json` carries its own `attribution` lines, which the card shows. Never remove the credit from either place.
 - **Names, not addresses.** Streets and public landmarks keep their names; businesses show as what they are with made-up signs; house numbers never appear; a player picks a town, never a location. **The respect list:** homes, schools, places of worship, hospitals, cemeteries, police stations, shelters and memorials are never paintable, whatever the map says (`cartographer/respect.py`).
 - **The look.** Models are made by the Blender scripts in `tools/blender/` (`build_art.py [set]` builds every model from one palette); they face +z in the game, stand on y = 0, and carry four material roles: Palette (flat swatches), Wall (a swatch the game tints per building or car), Glass and Glow (lit at night). `Kit` swaps each role for `Look`'s toon shader when it loads a model; `Batch` draws many copies as MultiMeshes with a tint each. `Look.dress(node, time)` adds the sky, sun and ink line for `day`, `dusk` or `night` and sets the `night` shader global for lamps and windows. `tools/art_preview.tscn` shows a set or a whole street.
@@ -59,8 +75,8 @@ Before calling a build done, export it with the release template (`godot --headl
 - **Comfort** (Ken gets motion sick). The calm camera from Block Party: Skyway: behind and above, slow blends, a level horizon on wall rides and grinds, no shake, no roll, no head bob, no quick cuts, motion blur off; field of view and how far the camera swings behind are settings. Reduce flashing sets the `steady` shader global (`CitySettings.apply_comfort`) for the drone's searchlight and the paint's shine. Menus and backdrops follow the same rules: the title's street only drifts slowly sideways.
 - **Play tests.** The shared add-on's `LGPlaytest` records a play test when the Play test recording setting is on (or with `-- --playtest`): a picture every few seconds, game events, frame times and controls, the player's notes (F8, or Note this moment in the pause menu) and a survey when they quit, all in one zip in `user://playtest/`. Game events go through `LGPlaytest.event()` and `moment()`; the round's own survey questions are `GameConfig.PLAYTEST`. Quit through `LGScenes.quit()` so the survey comes first.
 - **Everything works offline.** No server or network is needed to reach the title and play a town the game has.
-- **Launch ping.** `game/main.gd` calls `LGLaunchPing.send(GameConfig.GAME_ID)` at startup: one anonymous request to the game server's `/launch` (game, random install id, version, OS, CPU) so the server counts every player. It's skipped headless, from source and with `DO_NOT_TRACK` set, and never blocks or retries. TODO (lead): register `all-city` on game-server before the first release.
-- TODO (lead): online (walls, crews, quarters as rooms), when it comes.
+- **Launch ping.** `game/main.gd` calls `LGLaunchPing.send(GameConfig.GAME_ID)` at startup: one anonymous request to the game server's `/launch` (game, random install id, version, OS, CPU) so the server counts every player. It's skipped headless, from source and with `DO_NOT_TRACK` set, and never blocks or retries. `all-city` has to be registered on game-server before the first release.
+- **Online** so far is the walls: `WallStore` reads and writes `all-city.walls` and `all-city.paint` (game-server's `modules/src/games/all-city.ts`, docs/game-api.md there) when online play is on and a network is up, signing in on demand; everything else (crews, quarters as rooms, the drone) comes later. Changing what's sent means changing that module too, and deploying the server first.
 
 ## The shared add-on
 
@@ -76,7 +92,7 @@ Before calling a build done, export it with the release template (`godot --headl
 
 ## Testing online
 
-TODO (lead): All City has no online play yet. When it does, prefer a local game server to `play.linuxgroove.com`, as online-addon.md describes. Device logs live in `~/snap/all-city/common/.local/share/all-city/logs/godot.log`.
+Only the walls are online so far. Prefer a local game server to `play.linuxgroove.com`, as online-addon.md describes, since test runs create real accounts. `tools/paint_check.tscn` plays the two-machine proof (a tag painted on one copy shows on a second) and the Buff's morning. Device logs live in `~/snap/all-city/common/.local/share/all-city/logs/godot.log`.
 
 ## Releases
 
