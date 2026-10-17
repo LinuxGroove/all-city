@@ -62,12 +62,17 @@ static func recipe(style: String, ground: String, seed: int) -> Dictionary:
 
 ## Adds one face's modules to `batch`. `storeys` counts the ground floor;
 ## `ends` says which ends are the building's outer corners (a pier there).
+## The recipe's "pipe_at" and "escape_bay" (bay indexes, -1 for none) say
+## where the ways up go when the Cartographer chose them. Returns the ways
+## up as "climbs" (lines from the ground to the top of the parapet) and that
+## height as "crest".
 static func lay(batch: Batch, a: Vector3, b: Vector3, storeys: int, rec: Dictionary, seed: int,
-		ends := Vector2i(1, 0)) -> void:
+		ends := Vector2i(1, 0)) -> Dictionary:
+	var climbs: Array[PackedVector3Array] = []
 	var along := Vector3(b.x - a.x, 0, b.z - a.z)
 	var length := along.length()
 	if length < MIN_LENGTH or storeys < 1:
-		return
+		return {"climbs": climbs, "crest": a.y + storeys * STOREY}
 	var d := along / length
 	var out := Vector3(-d.z, 0, d.x)
 	var basis := Basis(d, Vector3.UP, out)
@@ -93,6 +98,13 @@ static func lay(batch: Batch, a: Vector3, b: Vector3, storeys: int, rec: Diction
 	var pipe_at := -1
 	if bool(rec.get("pipe", false)) and bays >= 2:
 		pipe_at = rng.randi_range(1, bays - 1)
+	if rec.has("escape_bay"):
+		escape_bay = int(rec.escape_bay) if int(rec.escape_bay) < bays else -1
+	if rec.has("pipe_at"):
+		pipe_at = int(rec.pipe_at) if int(rec.pipe_at) < bays else -1
+	var crest := top_y
+	for piece in style.top:
+		crest += 0.6 if piece == "cornice" else 0.95
 	for i in bays:
 		var mid := a + d * (bw * (i + 0.5))
 		for s in storeys:
@@ -123,6 +135,11 @@ static func lay(batch: Batch, a: Vector3, b: Vector3, storeys: int, rec: Diction
 		for s in storeys:
 			batch.add("facade/drainpipe", Transform3D(basis, at + Vector3.UP * (s * STOREY)))
 		batch.add("facade/drain_hopper", Transform3D(basis, at + Vector3.UP * (top_y - a.y - 0.95)))
+		var pipe := at + out * 0.14
+		climbs.append(PackedVector3Array([pipe, Vector3(pipe.x, crest, pipe.z)]))
+	if escape_bay >= 0:
+		var foot := a + d * (bw * (escape_bay + 0.5)) + out * 0.55
+		climbs.append(PackedVector3Array([foot, Vector3(foot.x, crest, foot.z)]))
 	# Corner piers: each face puts one on its own start, so every corner
 	# gets one.
 	if not bool(style.piers):
@@ -133,6 +150,7 @@ static func lay(batch: Batch, a: Vector3, b: Vector3, storeys: int, rec: Diction
 	if ends.y:
 		for s in storeys:
 			batch.add("facade/pier", Transform3D(basis, b + Vector3.UP * (s * STOREY)), wall)
+	return {"climbs": climbs, "crest": crest}
 
 
 ## The ground floor's modules, bay by bay.
