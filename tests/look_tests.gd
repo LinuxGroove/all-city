@@ -23,3 +23,13 @@ func test_facade_climbs(t) -> void:
 	# The outside of a face walking east is south (+z).
 	for c in out.climbs:
 		t.check(c[0].z > 0.0, "climbs are on the outside of the wall")
+
+
+func test_stairs_rails(t) -> void:
+	var batch := Batch.new()
+	var wide := Stairs.lay(batch, Vector3.ZERO, Vector3(0, 0, -1), 12, 4.0, Color.WHITE)
+	t.check(wide.rails.size() == 1 and wide.copings.size() == 2, "a wide flight has a middle rail and two copings")
+	t.check(is_equal_approx(wide.top.y, 12 * Stairs.RISE), "the top is twelve rises up")
+	var narrow := Stairs.lay(batch, Vector3.ZERO, Vector3(1, 0, 0), 10, 2.0, Color.WHITE, false, 0.15, 0.4)
+	t.check(narrow.rails.size() == 1, "a narrow flight with no walls gets a side rail")
+	t.check(is_equal_approx(narrow.top.x, 4.0) and is_equal_approx(narrow.top.y, 1.5), "real rise and going set the top")
