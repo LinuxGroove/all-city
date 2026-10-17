@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=All City
+Comment=Skate a copy of your own town and paint it before the other crews do.
+Exec=all-city
+Icon=${SNAP}/meta/gui/all-city.svg
+Categories=Game;SportsGame;ActionGame;
+Keywords=skate;skating;graffiti;town;map;openstreetmap;
+StartupWMClass=All City

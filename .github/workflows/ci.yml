@@ -16,7 +16,7 @@ defaults:
 
 jobs:
   test:
-    name: Godot checks, tests and whole bot runs
+    name: Godot checks and tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -31,4 +31,17 @@ jobs:
         run: godot --headless --path . tools/check_scripts.tscn 2>&1 | tee check.log; ! grep -q "SCRIPT ERROR" check.log
       - name: Run tests
         timeout-minutes: 20
-        run: godot --headless --path . tests/run_tests.tscn -- --games=2 2>&1 | tee test.log; ! grep -q "SCRIPT ERROR" test.log
+        run: godot --headless --path . tests/run_tests.tscn 2>&1 | tee test.log; ! grep -q "SCRIPT ERROR" test.log
+
+  cartographer:
+    name: Cartographer tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the Cartographer's packages
+        run: python3 -m pip install osmium shapely numpy pillow
+      - name: Run the Cartographer's tests
+        run: python3 -m unittest discover -s cartographer/tests -t .
