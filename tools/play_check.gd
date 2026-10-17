@@ -231,9 +231,9 @@ func _paint() -> void:
 	var near := play.view.spawn().p as Vector3
 	var best := {}
 	var best_d := INF
-	for id in walls._near_ids(near, 60.0):
+	for id in walls._near_ids(near, 90.0):
 		var f: Dictionary = walls.face(id)
-		if int(f.paint) != Walls.ALL or Vector2(f.b.x - f.a.x, f.b.z - f.a.z).length() < 4.0:
+		if int(f.paint) != Walls.ALL or Vector2(f.b.x - f.a.x, f.b.z - f.a.z).length() < 4.0 or not _open(f):
 			continue
 		var d := near.distance_to((f.a + f.b) * 0.5)
 		if d < best_d:
@@ -266,11 +266,34 @@ func _paint() -> void:
 		(Time.get_ticks_msec() - t0) / 1000.0, play.layer.shown().has(str(best.id))])
 	_check(not stored.is_empty(), "the tag is on the wall's record")
 	_check(play.layer.shown().has(str(best.id)), "and on the wall")
-	# Step back to look at it.
-	sk.place(Vector3(mid.x, float(best.base) + 0.3, mid.z) + out * 3.5, -out)
-	play.cam.snap()
-	await _ticks(90)
+	# Look at it from the street, with a camera of its own.
+	var quad: Node3D = play.layer._shown[str(best.id)].node
+	var look := quad.global_position
+	var eye := Camera3D.new()
+	play.add_child(eye)
+	eye.fov = 60.0
+	eye.global_position = look + out * 3.2 - along.normalized() * 0.8 + Vector3.UP * 0.4
+	eye.look_at(look)
+	eye.current = true
+	await _ticks(30)
 	await _shot("tag")
+	eye.queue_free()
+	play.cam.current = true
+
+
+## Whether there's room to stand in front of a wall and look at its paint
+## (Monaco has slits a body's width wide between its buildings).
+func _open(f: Dictionary) -> bool:
+	var along: Vector3 = f.b - f.a
+	var out := along.cross(Vector3.UP).normalized()
+	var mid: Vector3 = (f.a + f.b) * 0.5 + Vector3.UP * (float(f.base) + 1.4 - float(f.a.y))
+	var space := play.get_world_3d().direct_space_state
+	for u in [-1.0, 0.0, 1.0]:
+		var from: Vector3 = mid + along.normalized() * u
+		var query := PhysicsRayQueryParameters3D.create(from + out * 0.1, from + out * 5.0, 1)
+		if not space.intersect_ray(query).is_empty():
+			return false
+	return true
 
 
 ## Three tiles east (or as far as the town goes): the town streams round
