@@ -32,6 +32,13 @@ func test_hud(t) -> void:
 	t.check(hud.quarter_small.text == "Condamine", "and stays as a small line")
 	hud.step(PlayHud.QUARTER_SECONDS + 0.5)
 	t.check(not hud.quarter.visible, "the big name goes")
+	t.check(not hud.guide.visible, "the guide arrow is hidden until painting")
+	hud.show_guide(Vector2(1, 0), Vector2(0.9, 0), true)
+	t.check(hud.guide.visible, "and shows while painting")
+	hud.show_guide(Vector2.ZERO, Vector2.ZERO, true)
+	t.check(not hud.guide.visible, "but not with no way to point")
+	hud.show_guide(Vector2(1, 0), Vector2.ZERO, false)
+	t.check(not hud.guide.visible, "and goes when painting ends")
 	hud.say("Clean")
 	t.check(hud.paint_line.text == "Clean", "the paint's line shows")
 	hud.step(4.0)
@@ -71,6 +78,23 @@ func test_play_scene(t) -> void:
 		sk.input.move = sk.facing
 		await t.get_tree().physics_frame
 	t.check(Vector2(sk.global_position.x - from.x, sk.global_position.z - from.z).length() > 2.0, "and skates")
+	# The keys, read the way play reads them: W pushes the way you face, D turns you right.
+	sk.reads_controls = true
+	sk.place(sk.global_position, sk.facing)
+	var face := sk.heading
+	Input.action_press("move_forward")
+	for i in 120:
+		await t.get_tree().physics_frame
+	var pushed := sk.speed
+	t.check(pushed > 3.0 and sk.heading.is_equal_approx(face), "holding W pushes you straight on (%.1f m/s)" % pushed)
+	Input.action_press("move_right")
+	for i in 30:
+		await t.get_tree().physics_frame
+	Input.action_release("move_right")
+	Input.action_release("move_forward")
+	t.check(face.signed_angle_to(sk.heading, Vector3.UP) < -0.4, "and D turns you right (%.0f°)" % rad_to_deg(face.signed_angle_to(sk.heading, Vector3.UP)))
+	sk.reads_controls = false
+	sk.input.clear()
 	# A tag at the nearest wall that takes paint.
 	var walls: Walls = play.view.walls
 	var best := {}
@@ -90,13 +114,21 @@ func test_play_scene(t) -> void:
 		for i in 40:
 			await t.get_tree().physics_frame
 		var action: PaintAction = play.action
+		var key := LGInput.label_for_action("paint")
+		t.check(key != "" and ("Hold %s to tag" % key) in play.hud.paint_prompt.text, "at a wall the prompt names the key (%s)" % play.hud.paint_prompt.text)
+		# Only the paint key held, and the stick left alone.
+		var guided := false
+		var told := false
+		Input.action_press("paint")
 		for i in 900:
-			play.paint_override = PaintInput.make(true, action.guide_direction() * 0.8)
 			await t.get_tree().physics_frame
+			guided = guided or play.hud.guide.visible
+			told = told or ("Keep holding" in play.hud.paint_prompt.text)
 			if action.state == PaintAction.State.DONE:
 				break
-		play.paint_override = null
-		t.check(action.state == PaintAction.State.DONE, "a tag gets painted")
+		Input.action_release("paint")
+		t.check(action.state == PaintAction.State.DONE, "holding only the paint key gets a tag painted")
+		t.check(guided and told, "with an arrow and a word on what to do while painting")
 		for i in 5:
 			await t.get_tree().physics_frame
 		t.check(not play.store.wall(int(best.quarter), str(best.id)).is_empty(), "and goes on the wall's record")

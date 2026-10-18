@@ -26,6 +26,7 @@ var quarter: Label
 var quarter_small: Label
 var paint_line: Label
 var paint_prompt: Label
+var guide: Control
 
 var _moves: Array[Dictionary] = []
 var _quarter_t := -1.0
@@ -102,6 +103,14 @@ func _init() -> void:
 	paint_prompt.offset_top = -80
 	paint_prompt.offset_bottom = -44
 	root.add_child(paint_prompt)
+	guide = _Guide.new()
+	guide.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	guide.offset_left = -64
+	guide.offset_right = 64
+	guide.offset_top = -290
+	guide.offset_bottom = -162
+	guide.visible = false
+	root.add_child(guide)
 
 
 ## Reads the skater for this frame: Flow, the line, the state and the
@@ -156,6 +165,14 @@ func prompt(text: String) -> void:
 	paint_prompt.text = text
 
 
+## While painting: an arrow for the way to push the stick (`dir`, x right and
+## y down as the guide runs on the wall) and a dot for where the stick is.
+func show_guide(dir: Vector2, stick: Vector2, on: bool) -> void:
+	guide.visible = on and dir != Vector2.ZERO
+	if guide.visible:
+		(guide as _Guide).set_push(dir, stick)
+
+
 func _process(delta: float) -> void:
 	step(delta)
 
@@ -181,6 +198,35 @@ func step(delta: float) -> void:
 
 func _fresh(m: Dictionary) -> bool:
 	return float(m.t) > 0.0
+
+
+## The painting's push: a ring with an arrow for the guide's way and a dot
+## for the stick, which turns green when the two agree.
+class _Guide:
+	extends Control
+	var dir := Vector2.ZERO
+	var stick := Vector2.ZERO
+
+	func set_push(p_dir: Vector2, p_stick: Vector2) -> void:
+		if p_dir != dir or p_stick != stick:
+			dir = p_dir
+			stick = p_stick
+			queue_redraw()
+
+	func _draw() -> void:
+		var mid := size * 0.5
+		var r := minf(size.x, size.y) * 0.5 - 4.0
+		var agree := stick.dot(dir) > 0.5
+		draw_circle(mid, r, Color(CityTheme.INK, 0.75))
+		draw_arc(mid, r, 0.0, TAU, 40, CityTheme.YELLOW, 3.0, true)
+		var colour := CityTheme.HIVIS if agree else CityTheme.YELLOW
+		var tip := mid + dir * r * 0.78
+		var tail := mid - dir * r * 0.5
+		draw_line(tail, tip, colour, 8.0, true)
+		var side := Vector2(-dir.y, dir.x)
+		draw_colored_polygon(PackedVector2Array([tip + dir * 12.0, tip - dir * 6.0 + side * 16.0, tip - dir * 6.0 - side * 16.0]), colour)
+		if stick.length() > 0.1:
+			draw_circle(mid + stick.limit_length(1.0) * r * 0.6, 8.0, CityTheme.CYAN)
 
 
 ## The grind's balance: a bar with a dot that drifts off the middle.

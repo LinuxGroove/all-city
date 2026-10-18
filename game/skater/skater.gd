@@ -39,6 +39,11 @@ const TURN_SLOW := 4.2
 const MAX_CARVE := 16.0
 ## Speed lost per radian of carving.
 const CARVE_DRAG := 0.04
+## Steering with the stick turning the skater (the default): how fast it
+## turns standing still, in radians a second, and the most it turns you
+## rolling (MAX_CARVE still limits that at speed).
+const STEER_SPOT := 3.0
+const STEER_RATE := 2.8
 ## A tuck (crouch) halves the drag and turns less.
 const TUCK_DRAG := 0.5
 const TUCK_TURN := 0.7
@@ -150,6 +155,10 @@ var lines: Lines
 ## True to read the controls each tick (the play scene); tests and pilots
 ## leave it off and fill `input`.
 var reads_controls := false
+## Whether the stick turns the skater (left and right steer, up pushes, down
+## brakes) rather than pointing them somewhere seen from the camera. The
+## controls/steering setting; tests that read controls leave the default.
+var steer_with_stick := true
 ## False to skip the body (for quick headless tests).
 var visuals := true
 ## The writer's look, for Person.make.
@@ -269,6 +278,8 @@ func _init() -> void:
 
 
 func _ready() -> void:
+	_load_controls()
+	LGSettings.changed.connect(_on_setting_changed)
 	if visuals and person == null:
 		person = Person.make("writer", female, look_seed, look)
 		body.add_child(person)
@@ -278,8 +289,17 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if reads_controls:
 		var cam := get_viewport().get_camera_3d()
-		input.from_actions(cam.global_basis if cam else Basis.IDENTITY)
+		input.from_actions(cam.global_basis if cam else Basis.IDENTITY, heading, steer_with_stick, delta)
 	step(delta)
+
+
+func _on_setting_changed(section: String, _key: String, _value: Variant) -> void:
+	if section == "controls":
+		_load_controls()
+
+
+func _load_controls() -> void:
+	steer_with_stick = str(LGSettings.get_value("controls", "steering", "skater")) != "camera"
 
 
 ## Puts the skater down at `at`, facing `face`, at rest.
@@ -434,7 +454,9 @@ func _skate(dt: float) -> void:
 	var m := input.move.length() if control else 0.0
 	var pushing := false
 	_carve = 0.0
-	if m > 0.2:
+	if control and input.relative:
+		pushing = _steer_by_stick(dt)
+	elif m > 0.2:
 		var want := input.move / m
 		var angle := heading.signed_angle_to(want, Vector3.UP)
 		if absf(angle) > BRAKE_ANGLE and speed > 0.3:
@@ -510,6 +532,31 @@ func _skate(dt: float) -> void:
 			_end_line()
 	else:
 		_flat_time = 0.0
+
+
+## The stick turns the skater: left and right steer by how far it's pushed,
+## up pushes and down brakes. Returns whether this tick pushed.
+func _steer_by_stick(dt: float) -> bool:
+	var steer := input.stick.x
+	var ahead := input.stick.y
+	if absf(steer) > 0.05:
+		var rate := minf(STEER_RATE, MAX_CARVE / maxf(speed, 0.1))
+		if speed < 1.0:
+			rate = STEER_SPOT
+		if crouching:
+			rate *= TUCK_TURN
+		# Anticlockwise from above is positive, and right is clockwise.
+		var turn := -clampf(steer, -1.0, 1.0) * rate * dt
+		heading = heading.rotated(Vector3.UP, turn).normalized()
+		_carve = turn / dt
+		speed -= absf(turn) * CARVE_DRAG * speed
+	if ahead < -0.5:
+		speed = maxf(speed - BRAKE * -ahead * dt, 0.0)
+		return false
+	if ahead > 0.2 and not crouching and speed < PUSH_TOP:
+		speed = minf(speed + PUSH_ACCEL * ahead * (1.0 - speed / PUSH_TOP) * dt, PUSH_TOP)
+		return true
+	return false
 
 
 ## The way along the floor for a heading.
@@ -710,7 +757,7 @@ func _grind(dt: float) -> void:
 	if _buffer > 0.0:
 		_buffer = 0.0
 		var side := _flat(t_dir).cross(Vector3.UP)
-		velocity = t_dir * speed + Vector3.UP * GRIND_JUMP + side * input.move.dot(side) * GRIND_KICK
+		velocity = t_dir * speed + Vector3.UP * GRIND_JUMP + side * _push_across(t_dir) * GRIND_KICK
 		velocity.y = maxf(velocity.y, GRIND_JUMP * 0.8)
 		_leave_grind("jump")
 		_jumped = true
@@ -738,6 +785,14 @@ func _grind(dt: float) -> void:
 		_leave_grind("end")
 
 
+## How hard the stick pushes to the right of a line going `t_dir`. On a line
+## the skater is side on, so with steering by the stick, right is just right.
+func _push_across(t_dir: Vector3) -> float:
+	if input.relative:
+		return clampf(input.stick.x, -1.0, 1.0)
+	return input.move.dot(_flat(t_dir).cross(Vector3.UP))
+
+
 ## The lean on a line: it drifts and tips over by itself, and the stick
 ## (pushed against the lean) brings it back.
 func _balance(dt: float, t_dir: Vector3) -> void:
@@ -746,8 +801,7 @@ func _balance(dt: float, t_dir: Vector3) -> void:
 		_drift_target = _rng.randf_range(-1.0, 1.0) * BALANCE_DRIFT
 		_drift_time = _rng.randf_range(0.6, 1.4)
 	_drift = move_toward(_drift, _drift_target, dt * 0.8)
-	var side := _flat(t_dir).cross(Vector3.UP)
-	var push := input.move.dot(side)
+	var push := _push_across(t_dir)
 	_lean_v += ((balance * BALANCE_TIP + _drift) * balance_scale + push * BALANCE_CORRECT) * dt
 	_lean_v *= exp(-BALANCE_DAMP * dt)
 	balance += _lean_v * dt

@@ -51,6 +51,8 @@ func is_playing() -> bool:
 func _exit_tree() -> void:
 	# The mouse goes back to the menus, however the night ended.
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if LGSettings.changed.is_connected(_on_setting_changed):
+		LGSettings.changed.disconnect(_on_setting_changed)
 
 
 func _ready() -> void:
@@ -108,6 +110,8 @@ func _build() -> void:
 	action.rank = "tag"
 	action.writer_name = _tag()
 	action.colours = [CAN, Palette.color("ink"), Palette.color("cobalt")]
+	action.assist = bool(LGSettings.get_value("paint", "assist", true))
+	LGSettings.changed.connect(_on_setting_changed)
 	action.line_changed.connect(_on_paint_line)
 	action.started.connect(_on_paint_started)
 	action.stopped.connect(_on_paint_ended)
@@ -167,19 +171,40 @@ func _process(delta: float) -> void:
 	if q >= 0 and (not _read.has(q) or Time.get_ticks_msec() - int(_read[q]) > REREAD * 1000.0):
 		_read_quarter(q)
 	_prompt()
+	hud.show_guide(action.guide_direction(), _paint_stick(), action.is_painting())
 	_spray()
 
 
-## "Hold Paint" at a wall that takes paint, while not painting.
+## What the prompt says: at a wall that takes paint, hold the paint button,
+## and while painting, to keep holding it (the arrow shows the stick's push).
 func _prompt() -> void:
-	if action.is_painting() or skater.state != Skater.State.SKATE:
+	var key := LGInput.label_for_action("paint")
+	if action.is_painting():
+		if action.assist:
+			hud.prompt("Keep holding %s. Push along the arrow to go faster" % key)
+		else:
+			hud.prompt("Keep holding %s and push along the arrow" % key)
+		return
+	if skater.state != Skater.State.SKATE:
 		hud.prompt("")
 		return
 	var hit := action.target()
 	if hit.is_empty() or int(hit.face.paint) == Walls.NEVER:
 		hud.prompt("")
 	else:
-		hud.prompt("Hold Paint to tag this wall")
+		hud.prompt("Hold %s to tag this wall" % key)
+
+
+## The stick as painting reads it: x right, y down.
+func _paint_stick() -> Vector2:
+	if paint_override:
+		return paint_override.stick
+	return Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+
+
+func _on_setting_changed(section: String, key: String, value: Variant) -> void:
+	if section == "paint" and key == "assist" and action:
+		action.assist = bool(value)
 
 
 func _facing() -> Vector3:

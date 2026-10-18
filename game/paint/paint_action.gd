@@ -7,7 +7,8 @@ extends RefCounted
 ## pushes the spray along it. Full tilt goes a little faster than the
 ## guide's pace; rushing round its corners makes the outline wobble and
 ## pushing across it makes the line stray; hesitating lets the paint pool
-## and run into drips. The result grades Clean, Solid or Drippy (0 to 100)
+## and run into drips (with `assist` the spray never stops while paint is
+## held). The result grades Clean, Solid or Drippy (0 to 100)
 ## and always takes at least the rank's PaintRules.MIN_SECONDS. A wall on
 ## the respect list only gets a quiet "Not here".
 ##
@@ -45,6 +46,9 @@ const SMALLEST := 0.45
 const TAKES := {"tag": 3.0, "throwup": 20.0, "piece": 150.0, "burner": 300.0}
 ## Full tilt along the guide, against its pace.
 const TOP_SPEED := 1.2
+## With `assist`, the spray goes at least this share of the pace while paint
+## is held, so a writer who only holds the button still finishes the tag.
+const ASSIST_PACE := 0.6
 ## Slower than this share of the pace, paint pools, and after DRIP_AFTER
 ## seconds of it, runs.
 const POOL := 0.35
@@ -83,6 +87,9 @@ var writer_name := ""
 var colours: Array = []
 ## Go over better paint with a lower rank anyway.
 var cap := false
+## Holding paint is enough: the spray follows the guide by itself, and the
+## stick only makes it faster (a Clean tag takes the stick along the guide).
+var assist := false
 
 var state := State.IDLE
 var line := ""
@@ -274,6 +281,8 @@ func _painting(input: PaintInput, delta: float) -> void:
 		var along := clampf(input.stick.dot(dir), 0.0, 1.0)
 		var across := absf(input.stick.dot(Vector2(-dir.y, dir.x)))
 		var speed := pace * TOP_SPEED * along if along > 0.2 else 0.0
+		if assist:
+			speed = maxf(speed, pace * ASSIST_PACE)
 		_s = minf(_s + speed * delta, total)
 		# Rushing round a corner makes the outline wobble.
 		while _seg < _path.size() - 2 and _at[_seg + 1] <= _s:

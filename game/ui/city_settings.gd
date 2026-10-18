@@ -1,11 +1,12 @@
 class_name CitySettings
 extends VBoxContainer
-## All City's own settings rows (the camera, comfort and detail) above the
+## All City's own settings rows (the controls, camera, comfort and detail) above the
 ## shared screen, sound, online and play test rows. Used by the title's
 ## Settings and the pause menu.
 
 const FOLLOW := [[0.0, "Never"], [0.3, "A little"], [0.6, "Some"], [1.0, "All the way"]]
 const FOV := [[60.0, "60°"], [70.0, "70°"], [80.0, "80°"], [90.0, "90°"]]
+const STEERING := [["skater", "Turns you"], ["camera", "Points the way"]]
 const DETAIL := [[0, "Low (handhelds)"], [1, "Medium"], [2, "High"]]
 const WIDTH := 560
 
@@ -15,6 +16,9 @@ var shared := true
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 8)
+	_head("Controls")
+	_row("Left and right", STEERING, "controls", "steering")
+	_row("Paint by holding", SettingsPanel.ON_OFF, "paint", "assist")
 	_head("Camera")
 	_row("Swings behind you", FOLLOW, "camera", "follow")
 	_row("Field of view", FOV, "camera", "fov")

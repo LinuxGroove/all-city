@@ -35,6 +35,15 @@ const SETTING_DEFAULTS := {
 		"fov": 70.0,
 		"invert_y": false,
 	},
+	"controls": {
+		# "skater": left and right turn you, up pushes and down brakes.
+		# "camera": the stick points the way you go on screen.
+		"steering": "skater",
+	},
+	"paint": {
+		# Holding paint is enough to finish a tag; the stick only speeds it up.
+		"assist": true,
+	},
 	"comfort": {
 		# The drone's searchlight and the paint's shine stay steady.
 		"reduce_flashing": false,

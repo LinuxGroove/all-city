@@ -103,6 +103,68 @@ func test_push(t) -> void:
 	_free(y)
 
 
+func test_steer_by_keys(t) -> void:
+	var y: Array = await _yard(t)
+	var s: Skater = y[1]
+	s.place(Vector3(-60, 0.0, 1.5), Vector3.RIGHT)
+	_drive(s, 10, _nothing)
+	# The first tick of a held key is a nudge, not a full stick.
+	Input.action_press("move_right")
+	s.input.from_actions(Basis.IDENTITY, s.heading, true, DT)
+	Input.action_release("move_right")
+	t.check(s.input.stick.x > 0.0 and s.input.stick.x < 0.3, "a key ramps in (%.2f)" % s.input.stick.x)
+	_keys(s, 12, ["move_right"])
+	_keys(s, 20, [])
+	t.check(s.input.stick.length() < 0.05, "and ramps out when let go")
+	s.place(Vector3(-60, 0.0, 1.5), Vector3.RIGHT)
+	_drive(s, 5, _nothing)
+	# Forward pushes along the way you face, whichever way the camera looks.
+	var turned := Basis(Vector3.UP, 2.2)
+	_keys(s, 180, ["move_forward"], Callable(), turned)
+	t.check(s.speed > 3.0 and s.heading.dot(Vector3.RIGHT) > 0.99, "W pushes the way you face (%.2f)" % s.speed)
+	t.check(absf(s.global_position.z - 1.5) < 0.05, "straight on, with the camera turned")
+	# Right turns right, left turns left, at any camera angle.
+	var before := s.heading
+	_keys(s, 30, ["move_forward", "move_right"], Callable(), turned)
+	t.check(s.heading.z > 0.2 and before.signed_angle_to(s.heading, Vector3.UP) < -0.3, "D turns you right (%.2f)" % s.heading.z)
+	_keys(s, 60, ["move_forward", "move_left"], Callable(), turned)
+	t.check(s.heading.z < before.z - 0.2, "and A turns you left")
+	# Down brakes, and holding it from rest does not send you backwards.
+	var stopped := _keys(s, 240, ["move_back"], func() -> bool: return s.speed < 0.3)
+	t.check(s.speed < 0.3 and stopped < 120, "S brakes (%d ticks)" % stopped)
+	var rest := s.global_position
+	_keys(s, 60, ["move_back"])
+	t.check(s.global_position.distance_to(rest) < 0.1, "and holding it at rest stays put")
+	# From rest, left and right turn on the spot.
+	var at := s.heading
+	_keys(s, 30, ["move_right"])
+	t.check(rad_to_deg(at.angle_to(s.heading)) > 40.0, "you can turn on the spot")
+	# The camera setting keeps the old way: the stick points where you go.
+	s.place(Vector3(-60, 0.0, 1.5), Vector3.RIGHT)
+	_drive(s, 5, _nothing)
+	_keys(s, 90, ["move_forward"], Callable(), Basis.IDENTITY, false)
+	t.check(s.input.relative == false and s.heading.dot(Vector3.FORWARD) > 0.9, "with steering by the camera, up is away from it")
+	_free(y)
+
+
+func test_push_across(t) -> void:
+	var s := Skater.new()
+	s.visuals = false
+	t.add_child(s)
+	s.set_physics_process(false)
+	var along := Vector3.FORWARD
+	s.input.clear()
+	s.input.relative = true
+	s.input.stick = Vector2(1, 0.4)
+	t.check(is_equal_approx(s._push_across(along), 1.0), "on a line, right is right with steering by the stick")
+	s.input.stick = Vector2(-0.5, 0)
+	t.check(is_equal_approx(s._push_across(along), -0.5), "and left is left")
+	s.input.relative = false
+	s.input.move = Vector3.RIGHT
+	t.check(is_equal_approx(s._push_across(along), 1.0), "the camera way reads the world direction (right of a line going north)")
+	s.queue_free()
+
+
 func test_jump(t) -> void:
 	var y: Array = await _yard(t)
 	var s: Skater = y[1]
@@ -563,6 +625,24 @@ func _drive(s: Skater, n: int, fill: Callable, until := Callable()) -> int:
 		if until.is_valid() and until.call():
 			return i + 1
 	return n
+
+
+## Steps `n` ticks with the keyboard actions in `held` pressed, read the way
+## play reads them: steered by the stick (`relative`) or by `camera`. Stops
+## early once `until` holds. Returns the ticks run.
+func _keys(s: Skater, n: int, held: Array, until := Callable(), camera := Basis.IDENTITY, relative := true) -> int:
+	var ran := n
+	for a in held:
+		Input.action_press(a)
+	for i in n:
+		s.input.from_actions(camera, s.heading, relative, DT)
+		s.step(DT)
+		if until.is_valid() and until.call():
+			ran = i + 1
+			break
+	for a in held:
+		Input.action_release(a)
+	return ran
 
 
 ## Pushes the stick against the lean, as a player would.

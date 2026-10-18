@@ -9,9 +9,9 @@ signal closed
 
 ## The page's sections: a heading and a few lines.
 const SECTIONS := [
-	["Skate", "Push to build speed, crouch to pump, lean into corners. Grind any rail, ledge, kerb or fence, wall ride a facade and kick off it, and climb fire escapes and drainpipes to the roofs. A long drop costs Flow, never more."],
+	["Skate", "Up pushes you off and down brakes; left and right turn you, so you steer like the skater does, not like the camera. Crouch to pump. Grind any rail, ledge, kerb or fence, wall ride a facade and kick off it, and climb fire escapes and drainpipes to the roofs. A long drop costs Flow, never more."],
 	["Flow", "Moving builds Flow, and a line of moves that never touches flat ground builds it fastest. Stop and it drains. Flow is your paint: it fills your cans."],
-	["Paint", "Hold Paint by a wall and follow the guide. A tag takes seconds; bigger work takes longer and goes over smaller. The harder a wall is to reach and the more people see it, the more it's worth."],
+	["Paint", "Stand by a wall and hold Paint. Keep holding it: the spray follows the guide by itself, and an arrow shows which way to push the stick to go faster. Let go and the wall waits. A tag takes seconds; bigger work takes longer and goes over smaller. The harder a wall is to reach and the more people see it, the more it's worth."],
 	["The Buff", "The city's cleaners come at dawn and take paint down, the walls most people see first."],
 	["Respect", "Homes, schools, places of worship, hospitals, cemeteries and memorials are never painted. The town shows them with a quiet \"not here\"."],
 ]
@@ -19,12 +19,12 @@ const SECTIONS := [
 ## Each control: the action, what it does, and what to show on a keyboard
 ## when the action's own key doesn't say it all.
 const CONTROLS := [
-	["move_forward", "Skate and steer", "W A S D"],
+	["move_forward", "Push, brake and steer (up, down, left, right)", "W A S D"],
 	["look_right", "Camera (it eases back on its own)", "Mouse"],
 	["jump", "Jump", ""],
 	["crouch", "Crouch and pump; slide", ""],
 	["grind", "Grind (hold by a rail), then balance", ""],
-	["paint", "Paint (hold by a wall), then follow the guide", ""],
+	["paint", "Paint (hold by a wall until the tag is done)", ""],
 	["trick", "Trick (in the air)", ""],
 	["look_back", "Look back", ""],
 	["boost", "Boost (spends Flow)", ""],

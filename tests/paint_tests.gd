@@ -286,6 +286,40 @@ func test_paint_action(t) -> void:
 	writer.queue_free()
 
 
+func test_paint_assist(t) -> void:
+	var walls := _street()
+	var writer := _writer(t)
+	var action := PaintAction.new(walls, writer, _on_lock)
+	action.writer_name = "SALT"
+	action.colours = [Color("3ff2ff")]
+	# Without help, holding the button alone goes nowhere.
+	var held := PaintInput.make(true)
+	for i in 600:
+		action.step(held, STEP)
+	t.check(action.is_painting() and action.progress() == 0.0, "holding paint without the stick doesn't move the spray")
+	action.step(PaintInput.make(false), PaintAction.LET_GO + 0.01)
+	action.step(PaintInput.make(false), STEP)
+	# With it, holding is enough, at a steady pace.
+	action.assist = true
+	_done.clear()
+	action.finished.connect(_on_finished)
+	for i in 60 * 12:
+		action.step(held, STEP)
+		if action.state == PaintAction.State.DONE:
+			break
+	t.check(_done.size() == 1, "with help, holding paint finishes the tag")
+	t.check(_done.size() == 1 and float(_done[0].seconds) < 7.0 and float(_done[0].seconds) > 3.0,
+			"in a few seconds (%.1f)" % (_done[0].seconds if not _done.is_empty() else -1.0))
+	t.check(_done.size() == 1 and int(_done[0].grade) >= PaintAction.CLEAN and _done[0].kit.drips.size() == TagKit.kit_for("salt", "tag").drips.size(),
+			"and it doesn't drip or wobble")
+	# The stick along the guide is still faster than holding alone.
+	action.step(PaintInput.make(false), STEP)
+	_done.clear()
+	_paint(action, 1.0)
+	t.check(_done.size() == 1 and float(_done[0].seconds) < 3.5, "pushing along the guide still goes faster (%.1f)" % (_done[0].seconds if not _done.is_empty() else -1.0))
+	writer.queue_free()
+
+
 func test_not_here(t) -> void:
 	var walls := Walls.new()
 	walls.add({"id": "w0000c1", "a": Vector3(0, 0, 0), "b": Vector3(10, 0, 0), "base": 0.0, "top": 12.0, "paint": 0,
