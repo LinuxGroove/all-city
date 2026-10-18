@@ -25,10 +25,10 @@ const CONTROLS := [
 	["crouch", "Crouch and pump; slide", ""],
 	["grind", "Grind (hold by a rail), then balance", ""],
 	["paint", "Paint (hold by a wall until the tag is done)", ""],
-	["trick", "Trick (in the air)", ""],
+	["trick", "Trick in the air: spin, or flip with up or down", ""],
 	["look_back", "Look back", ""],
 	["boost", "Boost (spends Flow)", ""],
-	["map", "Map, spots and the crew", ""],
+	["map", "Town map: you, the quarters and your paint", ""],
 	["pause", "Pause", ""],
 ]
 

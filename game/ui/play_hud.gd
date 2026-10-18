@@ -15,7 +15,7 @@ const MOVE_SECONDS := 2.5
 const MOVES := 4
 ## The events worth a word, and the word.
 const WORDS := {"grind_start": "", "wall_ride": "Wall ride", "wall_kick": "Kick", "climb_top": "Up top",
-	"stumble": "Stumble", "bail": "Bail", "boost": "Boost", "line": ""}
+	"stumble": "Stumble", "bail": "Bail", "boost": "Boost", "trick": "Trick", "line": ""}
 
 var flow: ProgressBar
 var line_label: Label
@@ -139,6 +139,8 @@ func _word(e: Dictionary) -> String:
 		return "%s grind" % str(Lines.Kind.keys()[k]).capitalize() if k >= 0 and k < Lines.Kind.size() else "Grind"
 	if kind == "line":
 		return ""
+	if kind == "trick":
+		return str(e.get("name", "Trick"))
 	return WORDS[kind]
 
 

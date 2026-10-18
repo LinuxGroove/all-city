@@ -165,6 +165,63 @@ func test_push_across(t) -> void:
 	s.queue_free()
 
 
+func test_tricks(t) -> void:
+	var y: Array = await _yard(t)
+	var s: Skater = y[1]
+	s.place(Vector3(-60, 0.0, 1.5), Vector3.RIGHT)
+	_drive(s, 70, _push_east)
+	s.take_events()
+	_drive(s, 5, _trick_spin)
+	t.check(_find(s.take_events(), "trick").is_empty(), "the trick button does nothing on the ground")
+	# A spin on the way up counts when you land it.
+	var seen := await _trick_jump(t, s, _trick_spin, 6)
+	t.check(not seen.is_empty() and seen.name == "Spin", "a jump and Trick is a spin (%s)" % [seen])
+	t.check(s.line_count >= 1, "and it joins the line")
+	_drive(s, 90, _nothing, func() -> bool: return s.state == Skater.State.SKATE)
+	_drive(s, 30, _nothing)
+	t.check(s.body.transform.basis.y.is_equal_approx(Vector3.UP) and absf(s._trick_angle) < 0.01, "the body comes down upright")
+	# The stick picks it.
+	seen = await _trick_jump(t, s, _trick_up, 6)
+	t.check(not seen.is_empty() and seen.name == "Flip" and s._trick_flip, "up flips forward")
+	seen = await _trick_jump(t, s, _trick_down, 6)
+	t.check(not seen.is_empty() and seen.name == "Backflip" and s._trick_dir < 0.0, "down flips back")
+	seen = await _trick_jump(t, s, _trick_left, 6)
+	t.check(not seen.is_empty() and seen.name == "Spin" and s._trick_dir < 0.0, "left spins left")
+	# The body turns while it's done.
+	_drive(s, 30, _nothing)
+	_drive(s, 1, _jump_now)
+	_drive(s, 6, _nothing)
+	_drive(s, 1, _trick_up)
+	_drive(s, 14, _nothing)
+	t.check(s.state == Skater.State.AIR and not s.body.transform.basis.y.is_equal_approx(Vector3.UP), "the body is turned mid-trick")
+	# Too late in the air: landing cuts it short and it doesn't count.
+	_drive(s, 90, _nothing, func() -> bool: return s.state == Skater.State.SKATE)
+	_drive(s, 30, _nothing)
+	s.take_events()
+	seen = await _trick_jump(t, s, _trick_spin, 28)
+	t.check(seen.is_empty(), "a trick pressed too late to finish doesn't count")
+	_drive(s, 20, _nothing)
+	t.check(s.body.transform.basis.y.is_equal_approx(Vector3.UP), "and the body is upright again")
+	_free(y)
+
+
+## Jumps, waits `wait` ticks and presses Trick with `fill`, then flies on to
+## the ground. Returns the trick event, or {}.
+func _trick_jump(_t, s: Skater, fill: Callable, wait: int) -> Dictionary:
+	_drive(s, 40, _nothing, func() -> bool: return s.state == Skater.State.SKATE and s.is_on_floor())
+	s.take_events()
+	_drive(s, 1, _jump_now)
+	_drive(s, wait, _nothing)
+	_drive(s, 1, fill)
+	var events := []
+	for i in 120:
+		_drive(s, 1, _nothing)
+		events.append_array(s.take_events())
+		if s.state == Skater.State.SKATE and s.is_on_floor():
+			break
+	return _find(events, "trick")
+
+
 func test_jump(t) -> void:
 	var y: Array = await _yard(t)
 	var s: Skater = y[1]
@@ -697,6 +754,25 @@ func _climb_up(inp: SkaterInput) -> void:
 
 func _climb_down(inp: SkaterInput) -> void:
 	inp.stick = Vector2(0, -1)
+
+
+func _trick_spin(inp: SkaterInput) -> void:
+	inp.trick_pressed = true
+
+
+func _trick_up(inp: SkaterInput) -> void:
+	inp.trick_pressed = true
+	inp.stick = Vector2(0, 1)
+
+
+func _trick_down(inp: SkaterInput) -> void:
+	inp.trick_pressed = true
+	inp.stick = Vector2(0, -1)
+
+
+func _trick_left(inp: SkaterInput) -> void:
+	inp.trick_pressed = true
+	inp.stick = Vector2(-1, 0)
 
 
 func _jump_now(inp: SkaterInput) -> void:

@@ -47,6 +47,16 @@ func test_hud(t) -> void:
 	skater.queue_free()
 
 
+func _press(t, action: String) -> void:
+	for pressed in [true, false]:
+		var ev := InputEventAction.new()
+		ev.action = action
+		ev.pressed = pressed
+		Input.parse_input_event(ev)
+		for i in 2:
+			await t.get_tree().process_frame
+
+
 func test_play_scene(t) -> void:
 	var town := Towns.find("monaco")
 	t.check(not town.is_empty(), "Monaco comes with the game")
@@ -78,6 +88,8 @@ func test_play_scene(t) -> void:
 		sk.input.move = sk.facing
 		await t.get_tree().physics_frame
 	t.check(Vector2(sk.global_position.x - from.x, sk.global_position.z - from.z).length() > 2.0, "and skates")
+	var ready_at := sk.global_position
+	var ready_face := sk.facing
 	# The keys, read the way play reads them: W pushes the way you face, D turns you right.
 	sk.reads_controls = true
 	sk.place(sk.global_position, sk.facing)
@@ -95,6 +107,27 @@ func test_play_scene(t) -> void:
 	t.check(face.signed_angle_to(sk.heading, Vector3.UP) < -0.4, "and D turns you right (%.0f°)" % rad_to_deg(face.signed_angle_to(sk.heading, Vector3.UP)))
 	sk.reads_controls = false
 	sk.input.clear()
+	# The map: drawn in the background, opens on the Map button over the writer and holds the night.
+	var deadline := Time.get_ticks_msec() + 60000
+	while not play.map.is_loaded() and Time.get_ticks_msec() < deadline:
+		await t.get_tree().process_frame
+		OS.delay_msec(5)
+	t.check(play.map.is_loaded(), "the town map is drawn in the background")
+	await _press(t, "map")
+	t.check(play.map.is_open() and t.get_tree().paused, "Map opens it and holds the night")
+	var here: Vector3 = play.view.to_town(sk.global_position)
+	t.check(play.map.centre.distance_to(Vector2(here.x, here.z)) < 1.0, "on the writer")
+	play.menu.open()
+	t.check(not play.menu.is_open(), "the pause menu waits while the map is up")
+	await _press(t, "map")
+	t.check(not play.map.is_open() and not t.get_tree().paused, "Map shuts it and the night goes on")
+	await _press(t, "pause")
+	t.check(play.menu.is_open(), "and Pause opens the pause menu again")
+	play.menu.close()
+	# Back where the painting starts from.
+	sk.place(ready_at, ready_face)
+	for i in 30:
+		await t.get_tree().physics_frame
 	# A tag at the nearest wall that takes paint.
 	var walls: Walls = play.view.walls
 	var best := {}

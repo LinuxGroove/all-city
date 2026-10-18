@@ -144,6 +144,19 @@ const CLIPS := ["Idle", "Sprint", "Jump_Land", "Crouch_Idle", "NinjaJump_Land", 
 
 ## Below this the skater is put back where they last stood (holes in a
 ## town's ground; it isn't a death).
+## Tricks: a spin or a flip of the body in the air, one at a time. The
+## stick picks it (left and right spin that way, up flips forward, down
+## back, none spins right). Landing with at least TRICK_OK of it done counts.
+const TRICK_TIME := 0.5
+const TRICK_OK := 0.7
+## A press this long before the air starts the trick when it does.
+const TRICK_BUFFER := 0.12
+## Flow a landed trick adds on top of joining the line.
+const FLOW_TRICK := 0.03
+## How fast a trick finishes or unwinds once the air is gone, in radians a second.
+const TRICK_SETTLE := 30.0
+## Where the body turns about for a flip, above the feet.
+const TRICK_PIVOT := 0.9
 const KILL_Y := -40.0
 ## How fast the body catches up with a snap onto a line or a wall.
 const SNAP_EASE := 14.0
@@ -254,6 +267,14 @@ var _pitch := 0.0
 var _land_time := 0.0
 var _clip := ""
 var _freeze_in := 0.0
+# The trick being done: how long, its name, and the body's turn.
+var _trick_t := -1.0
+var _trick_name := ""
+var _trick_flip := false
+var _trick_dir := 1.0
+var _trick_buf := 0.0
+var _trick_angle := 0.0
+var _trick_goal := 0.0
 
 
 func _init() -> void:
@@ -345,7 +366,7 @@ func state_name() -> String:
 
 ## The events since the last call: {"kind": ...} with grind_start,
 ## grind_end, jump, land, stumble, bail, wall_ride, wall_end, wall_kick,
-## climb_start, climb_top, climb_end, pump, boost, line, line_end.
+## climb_start, climb_top, climb_end, pump, boost, trick (with its name), line, line_end.
 func take_events() -> Array[Dictionary]:
 	var out := _events
 	_events = []
@@ -429,6 +450,7 @@ func step(dt: float) -> void:
 			_climb(dt)
 		State.PAINT, State.PICKED_UP:
 			velocity = Vector3.ZERO
+	_tricks(dt)
 	_flow(dt)
 	if global_position.y < KILL_Y:
 		place(_last_safe + Vector3.UP * 0.5, heading)
@@ -1110,6 +1132,47 @@ func _mantle(dt: float) -> void:
 		_emit("climb_top", {"height": height})
 
 
+# --- Tricks -------------------------------------------------------------------
+
+## Starts a trick on a press in the air, runs it, and counts it when it was
+## nearly done by the time the air ran out (landing, or catching a line).
+func _tricks(dt: float) -> void:
+	_trick_buf = TRICK_BUFFER if input.trick_pressed else maxf(_trick_buf - dt, 0.0)
+	if _trick_t >= 0.0:
+		if state == State.AIR:
+			_trick_t += dt
+		if state != State.AIR or _trick_t >= TRICK_TIME:
+			_end_trick()
+	if state == State.AIR and _trick_t < 0.0 and _trick_buf > 0.0 and _air_time > 0.05 and stumble <= 0.0:
+		_start_trick()
+
+
+func _start_trick() -> void:
+	_trick_buf = 0.0
+	_trick_t = 0.0
+	var s := input.stick
+	_trick_flip = absf(s.y) > 0.5 and absf(s.y) > absf(s.x)
+	if _trick_flip:
+		# Up flips forward, and the body's front goes over.
+		_trick_dir = 1.0 if s.y > 0.0 else -1.0
+		_trick_name = "Flip" if s.y > 0.0 else "Backflip"
+	else:
+		_trick_dir = -1.0 if s.x < -0.3 else 1.0
+		_trick_name = "Spin"
+	_trick_goal = TAU * _trick_dir
+
+
+func _end_trick() -> void:
+	var done := _trick_t >= TRICK_TIME * TRICK_OK
+	if done:
+		flow = minf(flow + FLOW_TRICK * line_mult(), 1.0)
+		_bump_line()
+		_emit("trick", {"name": _trick_name})
+	else:
+		_trick_goal = 0.0
+	_trick_t = -1.0
+
+
 # --- Flow and lines -----------------------------------------------------------
 
 func _flow(dt: float) -> void:
@@ -1199,11 +1262,24 @@ func _update_body(dt: float) -> void:
 	var b := Basis(lean_axis.normalized(), _lean) * yaw_basis if lean_axis.length() > 0.01 else yaw_basis
 	if _pitch > 0.01:
 		b = Basis(yaw_basis.x, _pitch) * b
+	# A trick turns the body once round (a spin about its height, a flip
+	# about the hips), and finishes or unwinds quickly when the air is gone.
+	if _trick_t >= 0.0:
+		_trick_angle = _trick_goal * smoothstep(0.0, 1.0, _trick_t / TRICK_TIME)
+	elif _trick_angle != 0.0:
+		_trick_angle = move_toward(_trick_angle, _trick_goal, TRICK_SETTLE * dt) if dt > 0.0 else _trick_goal
+		if absf(_trick_angle) >= TAU - 0.001:
+			_trick_angle = 0.0
+	var turned := Basis.IDENTITY
+	if _trick_angle != 0.0:
+		turned = Basis(yaw_basis.x if _trick_flip else Vector3.UP, _trick_angle)
+		b = turned * b
 	if state == State.CLIMB and _c_mantle < 0.0:
 		# The swimming clip, stood up against the wall, climbs.
 		b = yaw_basis * Basis(Vector3.RIGHT, -PI * 0.5)
 		shift = Vector3.UP * 0.95 - climb_out * 0.25
-	body.transform = Transform3D(b, _offset + shift)
+	var pivot := Vector3.UP * TRICK_PIVOT
+	body.transform = Transform3D(b, _offset + shift + pivot - turned * pivot)
 	if person:
 		_pose()
 

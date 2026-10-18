@@ -23,6 +23,8 @@ var grind := false
 var grind_pressed := false
 var paint := false
 var trick := false
+## Pressed this tick.
+var trick_pressed := false
 var boost := false
 var look_back := false
 ## The stick steers from the skater's own point of view: left and right turn
@@ -44,6 +46,7 @@ func clear() -> void:
 	grind_pressed = false
 	paint = false
 	trick = false
+	trick_pressed = false
 	boost = false
 	look_back = false
 	relative = false
@@ -76,6 +79,7 @@ func from_actions(camera_basis: Basis, heading := Vector3.ZERO, p_relative := fa
 	grind_pressed = Input.is_action_just_pressed("grind")
 	paint = Input.is_action_pressed("paint")
 	trick = Input.is_action_pressed("trick")
+	trick_pressed = Input.is_action_just_pressed("trick")
 	boost = Input.is_action_pressed("boost")
 	look_back = Input.is_action_pressed("look_back")
 

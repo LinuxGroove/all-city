@@ -31,6 +31,7 @@ var layer: PaintLayer
 var store: WallStore
 var action: PaintAction
 var menu: PauseMenu
+var map: TownMap
 var card: TownCard
 var mist: CPUParticles3D
 ## Set by tools and tests to paint without the controls.
@@ -122,6 +123,14 @@ func _build() -> void:
 	add_child(hud)
 	menu = PauseMenu.attach(self)
 	menu.opened.connect(_on_menu_opened)
+	menu.can_open = _menu_can_open
+	map = TownMap.new()
+	add_child(map)
+	map.store = store
+	map.writer = _map_writer
+	map.can_open = _map_can_open
+	map.opened.connect(_on_map_opened)
+	map.closed.connect(_on_map_closed)
 	var cards := CanvasLayer.new()
 	cards.layer = 20
 	add_child(cards)
@@ -132,6 +141,8 @@ func _build() -> void:
 	_loading.queue_free()
 	_loading = null
 	card.show_town(town)
+	# The map reads the tiles in the background, a little at a time.
+	map.load_town(town)
 	skater.reads_controls = true
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	LGPlaytest.event("town", {"id": town.id})
@@ -338,6 +349,29 @@ func _show_loading() -> void:
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	l.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_loading.add_child(l)
+
+
+## The pause menu waits while the map is up (the map answers Pause itself).
+func _menu_can_open() -> bool:
+	return not map.is_open()
+
+
+## The map opens at your feet, not while painting or held.
+func _map_can_open() -> bool:
+	return _ready_to_play and not menu.is_open() and not action.is_painting() and not skater.is_held()
+
+
+## Where the writer is, in the town's own metres, and the way they face.
+func _map_writer() -> Dictionary:
+	return {"p": view.to_town(skater.global_position), "dir": skater.facing}
+
+
+func _on_map_opened() -> void:
+	menu.listen = false
+
+
+func _on_map_closed() -> void:
+	menu.listen = true
 
 
 func _on_menu_opened() -> void:
