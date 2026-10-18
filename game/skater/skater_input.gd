@@ -5,8 +5,8 @@ extends RefCounted
 ## themselves.
 
 ## How fast the stick follows the keys and the pad, per second: a key takes
-## about a fifth of a second to reach full, so a tap is a nudge.
-const RESPONSE := 14.0
+## about an eighth of a second to reach full, so a tap is a nudge.
+const RESPONSE := 20.0
 
 ## The left stick as a direction on the ground in the world (y is 0), length
 ## 0 to 1. Turned by the camera (pushing up heads away from it), or, when

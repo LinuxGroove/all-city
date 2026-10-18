@@ -100,11 +100,14 @@ func test_play_scene(t) -> void:
 	var pushed := sk.speed
 	t.check(pushed > 3.0 and sk.heading.is_equal_approx(face), "holding W pushes you straight on (%.1f m/s)" % pushed)
 	Input.action_press("move_right")
+	# The street is tight here, so count the furthest round it got before a wall stopped it.
+	var most := 0.0
 	for i in 30:
 		await t.get_tree().physics_frame
+		most = minf(most, face.signed_angle_to(sk.heading, Vector3.UP))
 	Input.action_release("move_right")
 	Input.action_release("move_forward")
-	t.check(face.signed_angle_to(sk.heading, Vector3.UP) < -0.4, "and D turns you right (%.0f°)" % rad_to_deg(face.signed_angle_to(sk.heading, Vector3.UP)))
+	t.check(most < -0.4, "and D turns you right (%.0f°)" % rad_to_deg(most))
 	sk.reads_controls = false
 	sk.input.clear()
 	# The map: drawn in the background, opens on the Map button over the writer and holds the night.

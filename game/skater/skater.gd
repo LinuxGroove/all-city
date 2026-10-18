@@ -36,14 +36,14 @@ const BRAKE_ANGLE := 2.3
 ## How fast the skater carves when slow (radians a second); faster, the
 ## turn widens so it never pulls more than MAX_CARVE (m/s²) sideways.
 const TURN_SLOW := 4.2
-const MAX_CARVE := 16.0
+const MAX_CARVE := 26.0
 ## Speed lost per radian of carving.
 const CARVE_DRAG := 0.04
 ## Steering with the stick turning the skater (the default): how fast it
 ## turns standing still, in radians a second, and the most it turns you
 ## rolling (MAX_CARVE still limits that at speed).
-const STEER_SPOT := 3.0
-const STEER_RATE := 2.8
+const STEER_SPOT := 4.0
+const STEER_RATE := 3.4
 ## A tuck (crouch) halves the drag and turns less.
 const TUCK_DRAG := 0.5
 const TUCK_TURN := 0.7
@@ -58,6 +58,13 @@ const BOOST_ACCEL := 7.0
 const BOOST_COST := 0.18
 ## Gravity along slopes and rails (the air uses GRAVITY, a livelier pull).
 const SLOPE_GRAVITY := 9.8
+## Rolling up a slope, gravity counts for this much of that, so a hill slows
+## you without stopping you dead (rolling down it counts in full).
+const UPHILL_GRAVITY := 0.4
+## Slow, not pushing and on a slope no steeper than this (rise over run), the
+## skater stands with a foot down rather than drifting off down the hill.
+const HOLD_GRADE := 0.45
+const HOLD_SPEED := 0.8
 ## Kerbs this high are rolled up without a jump.
 const STEP_HEIGHT := 0.25
 
@@ -516,7 +523,11 @@ func _skate(dt: float) -> void:
 		flow = maxf(flow - BOOST_COST * dt, 0.0)
 	_boosting = boosting
 	var along := _along_floor(heading, n)
-	speed -= SLOPE_GRAVITY * along.y * (1.1 if crouching else 1.0) * dt
+	if speed < HOLD_SPEED and not pushing and not boosting and not crouching and absf(along.y) < HOLD_GRADE:
+		speed = 0.0
+	else:
+		var pull := SLOPE_GRAVITY * along.y * (1.1 if crouching else 1.0)
+		speed -= pull * (UPHILL_GRAVITY if pull > 0.0 else 1.0) * dt
 	if not pushing and not boosting or speed > PUSH_TOP:
 		var drag := (ROLL_DRAG + AIR_DRAG * speed * speed) * (TUCK_DRAG if crouching else 1.0)
 		speed = maxf(speed - drag * dt, 0.0) if speed > 0.0 else minf(speed + drag * dt, 0.0)

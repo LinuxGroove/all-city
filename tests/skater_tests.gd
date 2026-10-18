@@ -99,7 +99,7 @@ func test_push(t) -> void:
 	var before := s.heading
 	_drive(s, 30, _carve_left)
 	var turned := rad_to_deg(before.angle_to(s.heading))
-	t.check(turned > 20.0 and turned < 75.0, "half a second of carving turns %.0f°" % turned)
+	t.check(turned > 40.0 and turned < 120.0, "half a second of carving turns %.0f°" % turned)
 	_free(y)
 
 
@@ -163,6 +163,107 @@ func test_push_across(t) -> void:
 	s.input.move = Vector3.RIGHT
 	t.check(is_equal_approx(s._push_across(along), 1.0), "the camera way reads the world direction (right of a line going north)")
 	s.queue_free()
+
+
+func test_turning(t) -> void:
+	var y: Array = await _yard(t)
+	var s: Skater = y[1]
+	# Rolling along at a good pace, a held key swings you round quickly.
+	s.place(Vector3(-60, 0.0, 1.5), Vector3.RIGHT)
+	_drive(s, 5, _nothing)
+	_keys(s, 150, ["move_forward"])
+	s.speed = 8.0
+	var before := s.heading
+	var start := s.global_position
+	_keys(s, 30, ["move_right"])
+	var turned := rad_to_deg(absf(before.signed_angle_to(s.heading, Vector3.UP)))
+	t.check(turned > 70.0, "half a second of D at a good pace turns %.0f°" % turned)
+	_keys(s, 30, ["move_right"])
+	var quarter := rad_to_deg(absf(before.signed_angle_to(s.heading, Vector3.UP)))
+	t.check(quarter > 135.0, "and a second turns most of the way round (%.0f°)" % quarter)
+	var sideways := absf(s.global_position.z - start.z)
+	t.check(sideways < 12.0, "in a tight space (%.1f m across)" % sideways)
+	# Standing still, left and right still turn on the spot.
+	s.place(Vector3(-60, 0.0, 1.5), Vector3.RIGHT)
+	_drive(s, 5, _nothing)
+	_keys(s, 20, ["move_left"])
+	t.check(rad_to_deg(Vector3.RIGHT.angle_to(s.heading)) > 55.0, "and on the spot (%.0f°)" % rad_to_deg(Vector3.RIGHT.angle_to(s.heading)))
+	_free(y)
+
+
+## A ramp rising to the east, `grade` (rise over run), on top of the yard: the
+## stage it is in is freed by the caller. Returns where its foot is.
+func _ramp(stage: Node3D, grade: float) -> Vector3:
+	var body := StaticBody3D.new()
+	var box := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(120.0, 2.0, 16.0)
+	box.shape = shape
+	body.add_child(box)
+	var tilt := Basis(Vector3.BACK, atan(grade))
+	var foot := Vector3(400, 0, 400)
+	stage.add_child(body)
+	# Its top surface passes through the foot, rising along +x from there.
+	body.global_transform = Transform3D(tilt, foot - tilt.y * 1.0 + tilt.x * 60.0)
+	return foot
+
+
+## A spot `dx` metres up the ramp from its foot (a little above the surface).
+func _up(foot: Vector3, grade: float, dx: float) -> Vector3:
+	return foot + Vector3(dx, dx * grade + 0.3, 0)
+
+
+func test_hills(t) -> void:
+	var y: Array = await _yard(t)
+	var s: Skater = y[1]
+	var foot := _ramp(y[0], 0.2)
+	await t.get_tree().physics_frame
+	# Stood on a hill facing up it: no drifting back, and no turning round.
+	s.place(_up(foot, 0.2, 20), Vector3.RIGHT)
+	_drive(s, 30, _nothing)
+	var at := s.global_position
+	_drive(s, 180, _nothing)
+	t.check(s.is_on_floor() and s.ground_normal.y < 0.99, "on the slope")
+	t.check(s.global_position.distance_to(at) < 0.1 and s.heading.dot(Vector3.RIGHT) > 0.99,
+			"standing facing uphill stays put (%.2f m)" % s.global_position.distance_to(at))
+	# And facing down it.
+	s.place(_up(foot, 0.2, 30), Vector3.LEFT)
+	_drive(s, 30, _nothing)
+	at = s.global_position
+	_drive(s, 180, _nothing)
+	t.check(s.global_position.distance_to(at) < 0.1, "so does standing facing downhill")
+	# A push from rest goes up a street this steep.
+	s.place(_up(foot, 0.2, 10), Vector3.RIGHT)
+	_drive(s, 30, _nothing)
+	var climbed := _keys(s, 240, ["move_forward"], func() -> bool: return s.speed > 4.0)
+	t.check(s.speed > 4.0 and climbed < 120, "pushing climbs it (%d ticks)" % climbed)
+	# Letting go, you coast on up and slow to a stop without rolling back.
+	var top := s.global_position.x
+	var lowest := s.speed
+	var flipped := false
+	for i in 600:
+		s.input.clear()
+		s.step(DT)
+		lowest = minf(lowest, s.speed)
+		flipped = flipped or s.heading.dot(Vector3.RIGHT) < 0.9
+	t.check(s.global_position.x > top + 3.0, "coasting carries on up (%.1f m)" % (s.global_position.x - top))
+	t.check(lowest >= 0.0 and not flipped and s.speed == 0.0, "then stops and stays facing uphill")
+	# Pushing from a stand facing downhill takes you down faster than the push.
+	s.place(_up(foot, 0.2, 60), Vector3.LEFT)
+	_drive(s, 30, _nothing)
+	_keys(s, 240, ["move_forward"])
+	t.check(s.speed > Skater.PUSH_TOP, "downhill goes faster than a push (%.1f)" % s.speed)
+	# Much steeper than a street, you can't stand: it rolls you back.
+	_free(y)
+	y = await _yard(t)
+	s = y[1]
+	foot = _ramp(y[0], 0.7)
+	await t.get_tree().physics_frame
+	s.place(_up(foot, 0.7, 10), Vector3.RIGHT)
+	_drive(s, 30, _nothing)
+	_drive(s, 120, _nothing)
+	t.check(s.heading.dot(Vector3.LEFT) > 0.9 and s.speed > 1.0, "a wall of a slope still rolls you down it")
+	_free(y)
 
 
 func test_tricks(t) -> void:
