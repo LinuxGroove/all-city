@@ -22,7 +22,7 @@ const CONTROLS := [
 	["move_forward", "Push, brake and steer (up, down, left, right)", "W A S D"],
 	["look_right", "Camera (it eases back on its own)", "Mouse"],
 	["jump", "Jump", ""],
-	["crouch", "Crouch and pump; slide", ""],
+	["crouch", "Crouch to tuck; let go to pump", ""],
 	["grind", "Grind (hold by a rail), then balance", ""],
 	["paint", "Paint (hold by a wall until the tag is done)", ""],
 	["trick", "Trick in the air: spin, or flip with up or down", ""],
