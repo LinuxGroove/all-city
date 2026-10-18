@@ -151,6 +151,9 @@ func _grind_coping() -> void:
 	_step = "coping"
 	var sk: Skater = play.skater
 	var lines: Lines = play.view.lines
+	if not _spawn_flight_walled():
+		print("play_check: skip the staircase at the spawn has no side walls, so no copings")
+		return
 	var near := lines.nearest(play.view.spawn().p, 30.0, [Lines.Kind.COPING])
 	if not _check(not near.is_empty(), "the staircase at the spawn has copings to grind"):
 		return
@@ -175,6 +178,27 @@ func _grind_coping() -> void:
 		sk.state_name()])
 	_check(ground * TICK > 1.0, "the skater grinds the staircase's coping")
 	await _ticks(60)
+
+
+## Whether the flight the town starts at has side walls (and so copings).
+## The manifest's spawn is in town metres, so the flights come from the tiles
+## round it.
+func _spawn_flight_walled() -> bool:
+	var spawn: Array = Towns.current.spawn.p
+	var size := TownTiles.SIZE
+	var i0 := floori(float(spawn[0]) / size)
+	var j0 := floori(float(spawn[2]) / size)
+	var walled := true
+	var nearest := INF
+	for di in range(-1, 2):
+		for dj in range(-1, 2):
+			var tile := TownTiles.load_tile(str(Towns.current.path), i0 + di, j0 + dj)
+			for f in tile.get("flights", []):
+				var d := Vector2(f.bottom.x - float(spawn[0]), f.bottom.z - float(spawn[2])).length()
+				if d < nearest:
+					nearest = d
+					walled = bool(f.walls)
+	return walled
 
 
 ## Up the nearest drainpipe or fire escape, onto the roof.

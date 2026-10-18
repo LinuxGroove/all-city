@@ -104,6 +104,46 @@ func test_town_streams(t) -> void:
 	view.queue_free()
 
 
+## Every town that comes with the game (res://towns/): its manifest and
+## tiles are all there, it carries OpenStreetMap's credit, it starts a writer
+## on solid ground with a way up and walls to paint, and it has quarters.
+func test_bundled_towns(t) -> void:
+	var ids := DirAccess.get_directories_at(Towns.BUNDLED)
+	t.check(ids.has(TOWN), "Monaco is among the bundled towns")
+	for id in ids:
+		var town := Towns.read(Towns.BUNDLED.path_join(id))
+		t.check(not town.is_empty() and str(town.id) == id, "%s: the manifest reads and has the folder's id" % id)
+		if town.is_empty():
+			continue
+		var tiles: Array = town.tiles
+		var missing := 0
+		for k in tiles:
+			missing += 0 if FileAccess.file_exists(str(town.path).path_join("tiles/%d_%d.tile" % [k[0], k[1]])) else 1
+		t.check(not tiles.is_empty() and missing == 0, "%s: all %d tiles are there" % [id, tiles.size()])
+		var credit := false
+		for line in town.get("attribution", []):
+			credit = credit or "OpenStreetMap" in str(line)
+		t.check(credit, "%s: the town card carries OpenStreetMap's credit" % id)
+		t.check((town.get("quarters", []) as Array).size() > 0, "%s: it has quarters" % id)
+		var p: Array = town.spawn.p
+		t.check(Rect2(town.box[0], town.box[1], town.box[2] - town.box[0], town.box[3] - town.box[1]).has_point(Vector2(p[0], p[2])),
+				"%s: the spawn is inside the town" % id)
+		var view := TownView.new()
+		t.add_child(view)
+		view.open(town, 1)
+		var at: Vector3 = view.spawn().p
+		view.load_around(at)
+		t.check(view.walls.size() > 100 and view.lines.count() > 100, "%s: round the spawn there are walls (%d) and lines (%d)" % [id,
+				view.walls.size(), view.lines.count()])
+		t.check(not view.lines.nearest(at, 150.0, [Lines.Kind.CLIMB]).is_empty(), "%s: a way up to a roof is near the spawn" % id)
+		await t.get_tree().physics_frame
+		await t.get_tree().physics_frame
+		var hit := view.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(at + Vector3.UP * 30.0,
+				at - Vector3.UP * 30.0, Kit.LAYER_WORLD))
+		t.check(not hit.is_empty() and absf(hit.position.y - (at.y - 0.5)) < 1.5, "%s: the spawn stands on solid ground" % id)
+		view.queue_free()
+
+
 func test_traffic(t) -> void:
 	var traffic := Traffic.new()
 	t.add_child(traffic)
