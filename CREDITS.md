@@ -23,7 +23,9 @@ Made by Drew, Kaden, and Ken VanDine, the LinuxGroove team.
 - The writers, the Buff's crew and everyone else in town are
   [Quaternius](https://quaternius.com)' Universal Base Characters with
   their hair, animated with the Universal Animation Library 1 and 2
-  (CC0), in `assets/people/` with their licence files.
+  (CC0), in `assets/people/` with their licence files. The writers'
+  hoodies and trousers (`assets/people/outfits/`) are made for All City by
+  `tools/blender/wardrobe.py`, fitted over those bodies.
 - The streets, buildings, stairs, vehicles, skates and spray cans
   (`assets/models/`) and the palette they share (`assets/art/palette.png`)
   are made for All City by the Blender scripts in `tools/blender/`, CC0

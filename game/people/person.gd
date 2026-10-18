@@ -11,14 +11,26 @@ const FEMALE := "res://assets/people/Superhero_Female_FullBody.gltf"
 const UAL1 := "res://assets/people/UAL1_Standard.glb"
 const UAL2 := "res://assets/people/UAL2_Standard.glb"
 const HAIR := "res://assets/people/hair/%s.gltf"
+const OUTFIT := "res://assets/people/outfits/%s_%s.gltf"
 const SHADER := preload("res://game/people/person.gdshader")
+const CLOTH := preload("res://game/people/cloth.gdshader")
 
 ## What each role wears: the outfit (see the shader) and its colours.
 const ROLES := {
-	"writer": {"outfit": 0, "main": Color("2846b8"), "accent": Color("ff4fa3"), "legs": Color("403e4a"), "shoe": Color("f4efe6")},
+	"writer": {"outfit": 0, "main": Color("2846b8"), "accent": Color("ff4fa3"), "legs": Color("403e4a"), "shoe": Color("f4efe6"),
+			"wardrobe": "streetwear"},
 	"buff": {"outfit": 1, "main": Color("c6f03c"), "accent": Color("c6f03c"), "legs": Color("2b2a33"), "shoe": Color("221f2b")},
 	"civic": {"outfit": 2, "main": Color("1f2a4a"), "accent": Color("3a6fd8"), "legs": Color("1f2a4a"), "shoe": Color("14121c")},
 	"passer": {"outfit": 3, "main": Color("e07a8b"), "accent": Color("e07a8b"), "legs": Color("2a5d8f"), "shoe": Color("f4efe6")},
+}
+## Real clothes, piece by piece (the outfit's mesh names): the colour (a key
+## of the role's colours, or a colour) and the kind (see cloth.gdshader).
+## Any mesh an outfit doesn't list is skin.
+const WARDROBE := {
+	"streetwear": {
+		"Hoodie": ["main", 0], "Hood": ["main", 0], "Rib": ["main", 1], "Strings": ["accent", 2],
+		"Trousers": ["legs", 0], "Metal": [Color("a7a9b3"), 2],
+	},
 }
 ## Hoodie and T-shirt colours writers and passers-by come in.
 const TOPS := [Color("2846b8"), Color("e8463a"), Color("f2c641"), Color("2f7f86"), Color("6a3fb5"), Color("f08a2c"),
@@ -43,6 +55,7 @@ const SKATE_LIFT := 0.09
 static var _libs := {}
 static var _baked := {}
 static var _mats := {}
+static var _cloths := {}
 static var _hair_mats := {}
 
 var role := "writer"
@@ -52,6 +65,8 @@ var skeleton: Skeleton3D
 var anim: AnimationPlayer
 var meshes: Array[MeshInstance3D] = []
 var skates := false
+## The outfit this person wears ("" when the shader paints one on).
+var outfit := ""
 var _current := ""
 
 
@@ -68,7 +83,11 @@ static func make(p_role := "writer", p_female := false, seed := 0, look := {}) -
 
 
 func _build(seed: int, look: Dictionary) -> void:
-	var ps: PackedScene = load(FEMALE if female else MALE)
+	var wear := str(ROLES[role].get("wardrobe", ""))
+	var dressed := OUTFIT % [wear, "female" if female else "male"]
+	if wear != "" and ResourceLoader.exists(dressed):
+		outfit = wear
+	var ps: PackedScene = load(dressed if outfit != "" else (FEMALE if female else MALE))
 	model = ps.instantiate()
 	add_child(model)
 	skeleton = model.find_child("Skeleton3D", true, false)
@@ -95,7 +114,7 @@ func _build(seed: int, look: Dictionary) -> void:
 			m.material_override = Look.flat(Color(0.9, 0.88, 0.85) if m.name == "Eyes" else HAIR_COLORS[hair_i] * 0.7)
 			continue
 		m.mesh = bake(m.mesh, m.skin, skeleton)
-		m.material_override = mat
+		m.material_override = _piece_material(String(m.name), j, skin_i) if outfit != "" else mat
 	_add_hair(str(styles[style_i]), HAIR_COLORS[hair_i])
 	if not female and r.randf() < 0.3 and role != "civic":
 		_add_hair("Hair_Beard", HAIR_COLORS[hair_i])
@@ -184,6 +203,24 @@ static func _material(j: Dictionary, skin_i: int) -> ShaderMaterial:
 		m.set_shader_parameter("skin", SKINS[skin_i])
 		_mats[key] = m
 	return _mats[key]
+
+
+## A piece of the outfit, or the skin under it (any mesh the outfit doesn't list).
+func _piece_material(piece: String, j: Dictionary, skin_i: int) -> ShaderMaterial:
+	var look: Array = WARDROBE[outfit].get(piece, [])
+	var col: Color = SKINS[skin_i]
+	var kind := 2
+	if not look.is_empty():
+		col = look[0] if look[0] is Color else j[look[0]]
+		kind = int(look[1])
+	var key := "%s/%s/%d" % [outfit, col.to_html(), kind]
+	if not _cloths.has(key):
+		var m := ShaderMaterial.new()
+		m.shader = CLOTH
+		m.set_shader_parameter("color", col)
+		m.set_shader_parameter("kind", kind)
+		_cloths[key] = m
+	return _cloths[key]
 
 
 static func _lib(path: String) -> AnimationLibrary:
