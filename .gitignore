@@ -13,3 +13,7 @@
 # Claude Code worktrees
 /.claude/
 /_scratch/
+
+# Python
+__pycache__/
+*.pyc

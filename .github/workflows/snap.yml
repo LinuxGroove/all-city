@@ -1,0 +1,72 @@
+name: Snap
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+  # The release workflow starts this on the new tag (a release it creates
+  # doesn't fire the release event).
+  workflow_dispatch:
+
+jobs:
+  snap:
+    name: Build the snap (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Every commit and tag, so tools/version.sh can describe this one.
+          fetch-depth: 0
+      # Releases are tagged vYYYY.WW.MINOR; other builds are that plus the
+      # commits since it and the commit (2026.41.0+3.g1a2b3c4d). The snap
+      # takes its version from project.godot.
+      - name: Stamp the version
+        run: echo "Version $(tools/version.sh --stamp)"
+      # Online play uses the LinuxGroove game server's key. It isn't kept in
+      # the repository; builds without the secret (pull requests from forks)
+      # keep "defaultkey" and can only play on a local server.
+      - name: Set the game server key
+        env:
+          GAME_SERVER_KEY: ${{ secrets.GAME_SERVER_KEY }}
+        run: |
+          if [ -z "$GAME_SERVER_KEY" ]; then
+            echo "::warning::GAME_SERVER_KEY is not set; this build can't play on the public game server"
+            exit 0
+          fi
+          case "$GAME_SERVER_KEY" in
+            *[!A-Za-z0-9_-]*) echo "::error::GAME_SERVER_KEY may only contain letters, digits, '-' and '_'"; exit 1 ;;
+          esac
+          sed -i "s/^const SERVER_KEY := \".*\"$/const SERVER_KEY := \"$GAME_SERVER_KEY\"/" game/net/online_server.gd
+          grep -q "^const SERVER_KEY := \"$GAME_SERVER_KEY\"$" game/net/online_server.gd
+      - uses: snapcore/action-build@v1
+        id: build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: all-city-snap-${{ matrix.arch }}
+          path: ${{ steps.build.outputs.snap }}
+      - name: Publish to the candidate channel
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag')
+        uses: snapcore/action-publish@v1
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.STORE_LOGIN }}
+        with:
+          snap: ${{ steps.build.outputs.snap }}
+          release: candidate
+      - name: Publish to the edge channel
+        if: github.event_name == 'push'
+        uses: snapcore/action-publish@v1
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.STORE_LOGIN }}
+        with:
+          snap: ${{ steps.build.outputs.snap }}
+          release: edge
