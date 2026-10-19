@@ -6,7 +6,7 @@ extends Node3D
 ##
 ##   xvfb-run -a -s "-screen 0 480x640x24" godot --path . --resolution 480x640 tools/people_shot.tscn -- \
 ##       --out=/tmp/people [--time=day|dusk|night] [--body=male|female|both] \
-##       [--poses=Idle,Sprint,Crouch_Idle,NinjaJump_Idle] [--views=front,three,side,back,close] [--skates=false]
+##       [--poses=Idle,Sprint,Crouch_Idle,NinjaJump_Idle] [--views=front,three,side,back,close] [--board=true]
 
 const VIEWS := {
 	"front": {"yaw": 0.0, "focus": 0.95, "dist": 4.6},
@@ -52,12 +52,16 @@ func _shoot(female: bool, path: String) -> void:
 	cam.fov = 30.0
 	stage.add_child(cam)
 	cam.current = true
-	var look := {"skates": str(_opts.get("skates", "true")) != "false"}
+	# With --board=true the writer stands on the skateboard, side on to it.
+	var board := str(_opts.get("board", "false")) == "true"
+	var look := {"board": board}
 	for k in ["main", "accent", "legs"]:
 		if _opts.has(k):
 			look[k] = Color(str(_opts[k]))
 	var writer := Person.make("writer", female, int(_opts.get("seed", 3)), look)
 	stage.add_child(writer)
+	if board:
+		writer.lift(Person.DECK_TOP)
 	var poses: PackedStringArray = str(_opts.get("poses", "Idle,Sprint,Crouch_Idle")).split(",")
 	var views: PackedStringArray = str(_opts.get("views", "front,three,side,back,close")).split(",")
 	var img: Image

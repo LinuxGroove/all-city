@@ -1,5 +1,5 @@
 extends Node3D
-## A night in a town: the town streams round a writer on skates at the
+## A night in a town: the town streams round a writer on a skateboard at the
 ## foot of its best staircase, with traffic on its streets and the paint
 ## that's on its walls. Skate, grind, wall ride and climb; hold Paint at a
 ## wall to tag it. The walls are kept by WallStore (the game server's when

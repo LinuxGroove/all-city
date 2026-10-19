@@ -32,7 +32,7 @@ Made by Drew, Kaden, and Ken VanDine, the LinuxGroove team.
   (CC0), in `assets/people/` with their licence files. The writers'
   hoodies and trousers (`assets/people/outfits/`) are made for All City by
   `tools/blender/wardrobe.py`, fitted over those bodies.
-- The streets, buildings, stairs, vehicles, skates and spray cans
+- The streets, buildings, stairs, vehicles, skateboards, backpacks and spray cans
   (`assets/models/`) and the palette they share (`assets/art/palette.png`)
   are made for All City by the Blender scripts in `tools/blender/`, CC0
   like the rest.

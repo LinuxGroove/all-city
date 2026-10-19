@@ -12,7 +12,7 @@ extends Node3D
 ## For pictures of the look and the poses:
 ##
 ##   xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --resolution 1280x720 tools/yard.tscn -- \
-##       --shot=/tmp/yard.png [--pose=street|skate|grind|kerb|wall|climb|roof|air|stumble] [--time=dusk]
+##       --shot=/tmp/yard.png [--pose=street|stand|skate|ollie|kickflip|manual|grind|kerb|slide|wall|climb|roof|air|kick|paint|stumble] [--time=dusk] [--close=right|left|back]
 ##
 ## `build()` makes the world with no skater, camera or input, for tests.
 
@@ -444,7 +444,10 @@ func _shoot(path: String, pose: String) -> void:
 		"kerb": [Vector3(-40.0, 0.0, -3.4), Vector3.RIGHT], "wall": [Vector3(-20.0, CURB, -7.3), Vector3.RIGHT],
 		"climb": [Vector3(-32.0, CURB, -6.5), Vector3.FORWARD], "mantle": [Vector3(-32.0, CURB, -6.5), Vector3.FORWARD],
 		"roof": [Vector3(-26.5, roof.y, -14.0), Vector3.BACK], "air": [Vector3(-30.0, 0.0, -1.5), Vector3.RIGHT],
-		"stumble": [Vector3(-20.0, 9.0, -1.5), Vector3.RIGHT],
+		"stumble": [Vector3(-20.0, 9.0, -1.5), Vector3.RIGHT], "stand": [Vector3(-30.0, 0.0, -1.5), Vector3.RIGHT],
+		"ollie": [Vector3(-30.0, 0.0, -1.5), Vector3.RIGHT], "kickflip": [Vector3(-30.0, 0.0, -1.5), Vector3.RIGHT],
+		"manual": [Vector3(-30.0, 0.0, -1.5), Vector3.RIGHT], "slide": [Vector3(-40.0, 0.0, -0.8), Vector3.RIGHT],
+		"paint": [Vector3(-30.0, 0.0, -1.5), Vector3.RIGHT], "kick": [Vector3(-30.0, 0.0, -1.5), Vector3.RIGHT],
 	}
 	var start: Array = starts.get(pose, [world.spawn, world.face])
 	skater.place(start[0], start[1])
@@ -455,9 +458,26 @@ func _shoot(path: String, pose: String) -> void:
 		if _shot_ready(pose, i):
 			break
 	# A stumble reads best from the side, so that picture nudges the camera.
-	var nudge := Vector2(0.9, 0.0) if pose == "stumble" else Vector2.ZERO
+	var nudge := Vector2(0.9, 0.0) if pose in ["stumble", "kickflip", "ollie", "manual"] else Vector2.ZERO
 	for i in 90:
 		cam.update(1.0 / 60.0, nudge)
+	if _opts.has("close"):
+		# A close look at the writer from the front right, left or back, for the poses.
+		var side := 1.0
+		match str(_opts.close):
+			"left":
+				side = -1.0
+			"back":
+				side = 0.0
+		var at := skater.global_position + Vector3.UP * 0.9
+		var f := skater.facing
+		var r := f.cross(Vector3.UP)
+		var near := Camera3D.new()
+		near.fov = 40.0
+		add_child(near)
+		var from := at + f * 2.6 + r * 1.6 * side if side != 0.0 else at - f * 3.0
+		near.look_at_from_position(from + Vector3.UP * 0.4, at)
+		near.make_current()
 	for i in 24:
 		await get_tree().process_frame
 	var img := get_viewport().get_texture().get_image()
@@ -487,9 +507,24 @@ func _shot_input(pose: String, inp: SkaterInput, i: int) -> void:
 			inp.stick = Vector2(0, 1)
 		"roof":
 			inp.move = Vector3.BACK * 0.5
-		"air":
+		"air", "ollie":
 			inp.move = Vector3.RIGHT
 			inp.jump = i == 120
+		"kickflip":
+			inp.move = Vector3.RIGHT
+			inp.jump = i == 120
+			inp.trick_pressed = i == 126
+		"manual":
+			inp.move = Vector3.RIGHT
+			inp.trick = i > 110
+		"slide":
+			inp.move = Vector3.RIGHT if i < 60 else Vector3(1, 0, -1).normalized()
+			inp.jump = i == 68
+			inp.grind = i > 60
+		"paint", "kick":
+			inp.move = Vector3.RIGHT if i < 60 else Vector3.ZERO
+			if i == 100:
+				skater.lock(true)
 
 
 ## Whether the skater has reached the pose for the picture.
@@ -511,6 +546,20 @@ func _shot_ready(pose: String, i: int) -> bool:
 			return i >= 40
 		"air":
 			return i > 125 and skater.state == Skater.State.AIR and skater.velocity.y < 0.5
+		"stand":
+			return i >= 60
+		"ollie":
+			return i >= 128
+		"kickflip":
+			return i >= 135
+		"manual":
+			return i >= 150
+		"slide":
+			return skater.state == Skater.State.GRIND and skater.grind_trick != "" and skater._g_len > 1.0
+		"paint":
+			return i >= 160
+		"kick":
+			return i >= 112
 		"stumble":
 			return skater.stumble > 0.0 and skater.stumble < skater.STUMBLE_TIME
 	return i >= 30

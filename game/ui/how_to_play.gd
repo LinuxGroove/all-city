@@ -9,7 +9,8 @@ signal closed
 
 ## The page's sections: a heading and a few lines.
 const SECTIONS := [
-	["Skate", "Up pushes you off and down brakes; left and right turn you, so you steer like the skater does, not like the camera. Crouch to pump. Grind any rail, ledge, kerb or fence, wall ride a facade and kick off it, and climb fire escapes and drainpipes to the roofs. A long drop costs Flow, never more."],
+	["Skate", "You ride a skateboard. Up pushes you off and down brakes; left and right turn you, so you steer like the skater does, not like the camera. Crouch to pump. Jump to ollie. Grind any rail, ledge, kerb or fence: along it is a 50-50 (a nosegrind with Crouch held), across it a boardslide. Wall ride a facade and kick off it, and climb fire escapes and drainpipes to the roofs, your board in your backpack. A long drop costs Flow, never more."],
+	["Tricks", "In the air, Trick is a kickflip; with the stick, a heelflip (left), a shove-it (right), a 360 flip (up) or a 360 (down). Hold Trick rolling along for a manual, to keep a line going across flat ground."],
 	["Flow", "Moving builds Flow, and a line of moves that never touches flat ground builds it fastest. Stop and it drains. Flow is your paint: it fills your cans."],
 	["Paint", "Stand by a wall and hold Paint. Keep holding it: the spray follows the guide by itself, and an arrow shows which way to push the stick to go faster. Let go and the wall waits. A tag takes seconds; bigger work takes longer and goes over smaller. The harder a wall is to reach and the more people see it, the more it's worth."],
 	["The Buff", "The city's cleaners come at dawn and take paint down, the walls most people see first."],
@@ -21,11 +22,11 @@ const SECTIONS := [
 const CONTROLS := [
 	["move_forward", "Push, brake and steer (up, down, left, right)", "W A S D"],
 	["look_right", "Camera (it eases back on its own)", "Mouse"],
-	["jump", "Jump", ""],
+	["jump", "Jump (an ollie)", ""],
 	["crouch", "Crouch to tuck; let go to pump", ""],
 	["grind", "Grind (hold by a rail), then balance", ""],
 	["paint", "Paint (hold by a wall until the tag is done)", ""],
-	["trick", "Trick in the air: spin, or flip with up or down", ""],
+	["trick", "Trick in the air: a flip, picked with the stick; hold it rolling for a manual", ""],
 	["look_back", "Look back", ""],
 	["boost", "Boost (spends Flow)", ""],
 	["map", "Town map: you, the quarters and your paint", ""],

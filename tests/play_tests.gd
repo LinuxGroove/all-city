@@ -26,6 +26,13 @@ func test_hud(t) -> void:
 	t.check(not "Jump" in hud.moves.text, "but not every event")
 	hud.step(PlayHud.MOVE_SECONDS + 0.1)
 	t.check(hud.moves.text == "", "the moves clear after a moment")
+	events = [{"kind": "grind_start", "line_kind": Lines.Kind.KERB, "trick": "Boardslide"},
+		{"kind": "grind_start", "line_kind": Lines.Kind.LEDGE, "trick": "50-50"}, {"kind": "manual"}]
+	hud.show_skater(skater, events)
+	hud.step(0.1)
+	t.check("Kerb boardslide" in hud.moves.text and "Ledge 50-50" in hud.moves.text and "Manual" in hud.moves.text,
+			"grinds go by their names, and manuals show (%s)" % hud.moves.text.replace("\n", " / "))
+	hud.step(PlayHud.MOVE_SECONDS + 0.1)
 	hud.show_quarter(7, "Condamine")
 	hud.step(0.1)
 	t.check(hud.quarter.visible and hud.quarter.text == "CONDAMINE", "a new quarter's name shows big")

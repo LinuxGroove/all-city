@@ -129,21 +129,23 @@ func _street(low: bool) -> void:
 ## drone's light, one keeping watch at the top of the steps.
 func _crew(rail: PackedVector3Array, top: Vector3) -> void:
 	var grinder := Person.make("writer", true, 4, {"main": Palette.color("signal_yellow"), "legs": Palette.color("ink")})
-	grinder.position = rail[0].lerp(rail[1], 0.45) + Vector3(0, -Person.SKATE_LIFT + 0.02, 0)
-	grinder.rotation.y = PI * 0.5
+	grinder.position = rail[0].lerp(rail[1], 0.45) + Vector3(0, 0.03 - Skater.GRIND_DROP, 0)
 	add_child(grinder)
 	grinder.pose("Crouch_Idle", 0.3)
+	grinder.grind_still(rail[0] - rail[1])
 	var painter := Person.make("writer", false, 9, {"main": Palette.color("purple"), "accent": Palette.color("hivis")})
 	painter.position = Vector3(-6.7, CURB, -6.5)
 	painter.rotation.y = PI
 	add_child(painter)
 	painter.pose("Pistol_Aim_Neutral", 0.5)
 	painter.hold_can(Palette.color("neon_cyan"))
+	painter.hold_board_still()
 	var lookout := Person.make("writer", true, 2, {"main": Palette.color("signal_red")})
 	lookout.position = Vector3(6.3, top.y + 0.02, top.z + 1.2)
 	lookout.rotation.y = PI * 0.85
 	add_child(lookout)
 	lookout.pose("Idle_FoldArms", 0.3)
+	lookout.board_on_pack_still()
 
 
 func _box(base: Vector3, size: Vector3, swatch: String) -> void:

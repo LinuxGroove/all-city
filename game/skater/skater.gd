@@ -1,16 +1,23 @@
 class_name Skater
 extends CharacterBody3D
-## A writer on inline skates: every move, tuned in one place, on the fixed
+## A writer on a skateboard: every move, tuned in one place, on the fixed
 ## physics tick, so it plays the same at any frame rate and tests can drive
 ## it headless through `input` and `step()`.
 ##
-## Moves: push and carve, crouch to tuck and pump, jump; grind any line in
-## `lines` (hold grind near it), balancing on the stick; wall ride a facade
-## (hold grind in the air beside it) and kick off it; climb drainpipes and
-## fire escapes and mantle onto the roof; drop from anywhere (a long fall
-## costs Flow and a stumble, never a life). The clips are placeholders from
-## the Universal Animation Library, and the body is turned and tipped in
-## code where no clip fits.
+## Moves: push off with a foot and carve, crouch to tuck and pump, ollie (the
+## jump pops the tail); kickflips, heelflips, shove-its, 360 flips and 360s
+## in the air (Trick, with the stick); manual on the back wheels (Trick held
+## on the ground); grind any line in `lines` (hold grind near it), a 50-50
+## along it or a boardslide across it, balancing on the stick; wall ride a
+## facade (hold grind in the air beside it) and kick off it; climb drainpipes
+## and fire escapes with the board in the backpack and mantle onto the roof;
+## drop from anywhere (a long fall costs Flow and a stumble, never a life). To
+## paint, the writer kicks the tail and holds the board by its nose.
+##
+## The clips are placeholders from the Universal Animation Library, which
+## has no skate clips: the body is turned and tipped in code, and BoardRig
+## stands the feet on the board (side on, left foot forward), which flips,
+## pops and slides under them as the moves go.
 ##
 ## Flow is the paint: plain skating builds it slowly, grinds, wall rides,
 ## air and climbs fast, and a line of moves without touching flat ground
@@ -146,14 +153,15 @@ const LINE_MAX_MULT := 4.0
 
 ## Every clip the body plays (placeholders from the Universal Animation
 ## Library).
-const CLIPS := ["Idle", "Sprint", "Jump_Land", "Crouch_Idle", "NinjaJump_Land", "Jump_Start", "NinjaJump_Idle",
+const CLIPS := ["Idle", "Walk", "Jump_Land", "Crouch_Idle", "NinjaJump_Land", "Jump_Start", "NinjaJump_Idle",
 	"Swim_Fwd", "ClimbUp_1m", "Pistol_Aim_Neutral", "Hit_Knockback"]
 
-## Below this the skater is put back where they last stood (holes in a
-## town's ground; it isn't a death).
-## Tricks: a spin or a flip of the body in the air, one at a time. The
-## stick picks it (left and right spin that way, up flips forward, down
-## back, none spins right). Landing with at least TRICK_OK of it done counts.
+## Tricks in the air, one at a time, picked by the stick: none a kickflip,
+## left a heelflip, right a shove-it, up a 360 flip, down a 360 (the body and
+## board spin round together). The board flips and spins under the feet; the
+## body only ever turns about its height. Landing with at least TRICK_OK of
+## it done counts.
+const TRICKS := {"kickflip": "Kickflip", "heelflip": "Heelflip", "shove": "Shove-it", "tre": "360 Flip", "spin": "360"}
 const TRICK_TIME := 0.5
 const TRICK_OK := 0.7
 ## A press this long before the air starts the trick when it does.
@@ -162,8 +170,47 @@ const TRICK_BUFFER := 0.12
 const FLOW_TRICK := 0.03
 ## How fast a trick finishes or unwinds once the air is gone, in radians a second.
 const TRICK_SETTLE := 30.0
-## Where the body turns about for a flip, above the feet.
+## Where the body turns about for a spin, above the feet.
 const TRICK_PIVOT := 0.9
+## The middle of the deck, which a flip turns the board about.
+const FLIP_PIVOT := Vector3(0.0, 0.07, 0.0)
+## How far the feet come up off the board to let it flip.
+const FLIP_LIFT := 0.09
+
+# Manuals: Trick held rolling along on the ground balances on the back
+# wheels, keeping a line going across flat ground, for up to MANUAL_TIME.
+const MANUAL_SPEED := 2.0
+const MANUAL_TIME := 3.0
+const FLOW_MANUAL := 0.05
+const MANUAL_PITCH := deg_to_rad(14.0)
+
+# The board.
+## The ollie: the tail snaps down and the nose comes up this far, then the
+## front foot levels it, over POP_TIME.
+const POP_PITCH := deg_to_rad(24.0)
+const POP_TIME := 0.3
+## In the air the knees draw the board up under the body this far.
+const AIR_TUCK := 0.14
+## A 50-50 rides the trucks' hangers on the line, a boardslide the deck's
+## middle: how far under the line each puts the board's wheels.
+const GRIND_DROP := 0.018
+const SLIDE_DROP := 0.094
+## A grind caught this square to the line (the dot of the way you were
+## going and the line) or squarer is a boardslide; nearer along it, a 50-50.
+const SLIDE_SQUARE := 0.82
+## Pushing: kicks a second, how much of each the foot is on the ground, and
+## how far along the board it sweeps.
+const PUSH_RATE := 1.6
+const PUSH_DOWN := 0.55
+## How fast the board follows where it should be (when it isn't flipping).
+const BOARD_EASE := 20.0
+## Stopping to paint, the back foot kicks the tail and the nose comes up
+## this far on the tail, then the free hand takes it, over KICK_TIME.
+const KICK_PITCH := deg_to_rad(72.0)
+const KICK_TIME := 0.4
+
+## Below this the skater is put back where they last stood (holes in a
+## town's ground; it isn't a death).
 const KILL_Y := -40.0
 ## How fast the body catches up with a snap onto a line or a wall.
 const SNAP_EASE := 14.0
@@ -212,6 +259,10 @@ var grind_id := -1
 var grind_kind := -1
 ## The wall being ridden: its outward normal.
 var wall_normal := Vector3.ZERO
+## The grind's name: "50-50", "Nosegrind" or "Boardslide" ("" off a line).
+var grind_trick := ""
+## Balancing on the back wheels.
+var manual := false
 ## The climb line held, or -1, and the way out from its wall.
 var climb_id := -1
 var climb_out := Vector3.ZERO
@@ -274,15 +325,27 @@ var _lean := 0.0
 var _pitch := 0.0
 var _land_time := 0.0
 var _clip := ""
-var _freeze_in := 0.0
-# The trick being done: how long, its name, and the body's turn.
+# The trick being done: how long, its kind (a key of TRICKS), and its turn.
 var _trick_t := -1.0
 var _trick_name := ""
-var _trick_flip := false
+var _trick_kind := ""
 var _trick_dir := 1.0
 var _trick_buf := 0.0
 var _trick_angle := 0.0
 var _trick_goal := 0.0
+# The board: pushing (and the push's place in its kick), the ollie's pop,
+# the manual, and where the person stands on the body.
+var _pushing := false
+var _push_phase := 0.0
+var _push_w := 0.0
+var _pop := -1.0
+var _manual_t := 0.0
+var _manual_spent := false
+var _p_yaw := -PI * 0.5
+var _ride_y := 0.0
+var _lift := Person.DECK_TOP
+var _kick := -1.0
+var _rig := {}
 
 
 func _init() -> void:
@@ -348,6 +411,8 @@ func place(at: Vector3, face := Vector3.FORWARD) -> void:
 	_air_time = 0.0
 	_peak_y = at.y
 	_jumped = false
+	_pop = -1.0
+	manual = false
 	_offset = Vector3.ZERO
 	last_ground_y = at.y
 	_last_safe = at
@@ -418,6 +483,7 @@ func _hold(as_state: State, on: bool) -> void:
 			_leave_grind("held")
 		elif state == State.WALL:
 			_leave_wall(false)
+		_end_manual()
 		state = as_state
 		velocity = Vector3.ZERO
 		speed = 0.0
@@ -488,6 +554,8 @@ func _skate(dt: float) -> void:
 	var m := input.move.length() if control else 0.0
 	var pushing := false
 	_carve = 0.0
+	_manual(dt, control)
+	var unpushed := speed
 	if control and input.relative:
 		pushing = _steer_by_stick(dt)
 	elif m > 0.2:
@@ -519,6 +587,11 @@ func _skate(dt: float) -> void:
 			_pump_cool = PUMP_COOLDOWN
 			_emit("pump")
 		_tuck_time = 0.0
+	if manual and pushing:
+		# Balanced on the back wheels: no foot free to push.
+		pushing = false
+		speed = minf(speed, unpushed)
+	_pushing = pushing
 	var boosting := control and input.boost and flow > 0.01 and not crouching
 	if boosting:
 		if not _boosting:
@@ -565,7 +638,8 @@ func _skate(dt: float) -> void:
 	ground_normal = get_floor_normal()
 	if ground_normal.y > 0.98:
 		_last_safe = global_position
-		_flat_time += dt
+		# A manual carries a line across flat ground.
+		_flat_time = 0.0 if manual else _flat_time + dt
 		if _flat_time > LINE_GRACE:
 			_end_line()
 	else:
@@ -597,6 +671,34 @@ func _steer_by_stick(dt: float) -> bool:
 	return false
 
 
+## Trick held while rolling balances on the back wheels, for a while: it
+## joins the line and keeps it going. Let go, run out of time or slow down
+## and the nose comes down.
+func _manual(dt: float, control: bool) -> void:
+	var want := control and input.trick and not crouching and speed > MANUAL_SPEED and not _manual_spent
+	if want and not manual:
+		manual = true
+		_manual_t = 0.0
+		_bump_line()
+		_emit("manual")
+	elif manual and not want:
+		_end_manual()
+	if manual:
+		_manual_t += dt
+		flow = minf(flow + FLOW_MANUAL * line_mult() * dt, 1.0)
+		if _manual_t >= MANUAL_TIME:
+			_manual_spent = true
+			_end_manual()
+	if not input.trick:
+		_manual_spent = false
+
+
+func _end_manual() -> void:
+	if manual:
+		manual = false
+		_emit("manual_end", {"seconds": _manual_t})
+
+
 ## The way along the floor for a heading.
 static func _along_floor(dir: Vector3, n: Vector3) -> Vector3:
 	var v := dir - n * dir.dot(n)
@@ -609,11 +711,14 @@ func _jump(from_velocity: Vector3) -> void:
 	crouching = false
 	_jumped = true
 	_start_air()
-	_emit("jump", {"from": "ground"})
+	# An ollie: the back foot snaps the tail down and the board pops up.
+	_pop = 0.0
+	_emit("jump", {"from": "ground", "name": "Ollie"})
 
 
 func _start_air() -> void:
 	state = State.AIR
+	_end_manual()
 	_air_time = 0.0
 	_peak_y = global_position.y
 
@@ -733,8 +838,10 @@ func _try_grind(on_ground: bool) -> bool:
 	var tangent: Vector3 = hit.tangent
 	var along := v.dot(tangent)
 	var flat_t := Vector3(tangent.x, 0, tangent.z)
+	var square := 1.0
 	if flat.length() > 0.5 and flat_t.length() > 0.1:
-		if absf(flat.normalized().dot(flat_t.normalized())) < (0.4 if on_ground else 0.25):
+		square = absf(flat.normalized().dot(flat_t.normalized()))
+		if square < (0.4 if on_ground else 0.25):
 			return false
 	var dir := 1 if along >= 0.0 else -1
 	if absf(along) < 0.25 * v.length():
@@ -744,18 +851,22 @@ func _try_grind(on_ground: bool) -> bool:
 		return false
 	if lines.room(hit.id, hit.seg, hit.t, dir) < 0.6:
 		return false
-	_start_grind(hit, dir, on_speed)
+	# Coming at it across, the board turns across it; along it, the trucks
+	# take it (on the nose with Crouch held).
+	var trick := "Boardslide" if square < SLIDE_SQUARE else ("Nosegrind" if input.crouch else "50-50")
+	_start_grind(hit, dir, on_speed, trick)
 	return true
 
 
 ## Starts a grind on a line found by `Lines.nearest()`, going `dir` along it.
-func start_grind(hit: Dictionary, dir: int, at_speed: float) -> void:
-	_start_grind(hit, dir, at_speed)
+func start_grind(hit: Dictionary, dir: int, at_speed: float, trick := "50-50") -> void:
+	_start_grind(hit, dir, at_speed, trick)
 
 
-func _start_grind(hit: Dictionary, dir: int, at_speed: float) -> void:
+func _start_grind(hit: Dictionary, dir: int, at_speed: float, trick := "50-50") -> void:
 	grind_id = hit.id
 	grind_kind = hit.kind
+	grind_trick = trick
 	_g_seg = hit.seg
 	_g_t = hit.t
 	_g_dir = dir
@@ -772,11 +883,11 @@ func _start_grind(hit: Dictionary, dir: int, at_speed: float) -> void:
 	_lean_v = _rng.randf_range(-0.12, 0.12)
 	_drift = 0.0
 	_drift_time = 0.0
-	# Grind stance: side on to the line, turned from where you came.
-	var side := _flat(_g_tangent).cross(Vector3.UP)
-	facing = side if side.dot(facing) >= 0.0 else -side
+	# The body faces along the line: a 50-50 stands side on as when rolling,
+	# a boardslide turns the board across under the feet.
+	facing = _flat(_g_tangent).normalized()
 	_bump_line()
-	_emit("grind_start", {"line_kind": grind_kind, "id": grind_id})
+	_emit("grind_start", {"line_kind": grind_kind, "id": grind_id, "trick": grind_trick})
 
 
 func _grind(dt: float) -> void:
@@ -799,7 +910,8 @@ func _grind(dt: float) -> void:
 		velocity.y = maxf(velocity.y, GRIND_JUMP * 0.8)
 		_leave_grind("jump")
 		_jumped = true
-		_emit("jump", {"from": "grind"})
+		_pop = 0.0
+		_emit("jump", {"from": "grind", "name": "Ollie"})
 		return
 	var moved := lines.advance(grind_id, _g_seg, _g_t, speed * dt * _g_dir)
 	var turn: float = moved.turn
@@ -814,8 +926,8 @@ func _grind(dt: float) -> void:
 		return
 	if turn > 0.0:
 		speed *= lerpf(1.0, 0.75, turn / GRIND_CORNER)
-		var side := _flat(_g_tangent).cross(Vector3.UP)
-		facing = side if side.dot(facing) >= 0.0 else -side
+	if _flat(_g_tangent).length() > 0.05:
+		facing = _flat(_g_tangent).normalized()
 	velocity = _g_tangent * speed
 	if moved.ended:
 		global_position += _g_tangent * float(moved.over)
@@ -823,8 +935,8 @@ func _grind(dt: float) -> void:
 		_leave_grind("end")
 
 
-## How hard the stick pushes to the right of a line going `t_dir`. On a line
-## the skater is side on, so with steering by the stick, right is just right.
+## How hard the stick pushes to the right of a line going `t_dir`. With
+## steering by the stick, right is just right.
 func _push_across(t_dir: Vector3) -> float:
 	if input.relative:
 		return clampf(input.stick.x, -1.0, 1.0)
@@ -859,6 +971,7 @@ func _leave_grind(reason: String) -> void:
 	_no_grind_id = grind_id
 	_no_grind_time = 0.3
 	grind_id = -1
+	grind_trick = ""
 	balance = 0.0
 	if reason != "held":
 		_start_air()
@@ -1167,14 +1280,17 @@ func _start_trick() -> void:
 	_trick_buf = 0.0
 	_trick_t = 0.0
 	var s := input.stick
-	_trick_flip = absf(s.y) > 0.5 and absf(s.y) > absf(s.x)
-	if _trick_flip:
-		# Up flips forward, and the body's front goes over.
-		_trick_dir = 1.0 if s.y > 0.0 else -1.0
-		_trick_name = "Flip" if s.y > 0.0 else "Backflip"
+	if absf(s.y) > 0.5 and absf(s.y) > absf(s.x):
+		_trick_kind = "tre" if s.y > 0.0 else "spin"
+	elif s.x < -0.3:
+		_trick_kind = "heelflip"
+	elif s.x > 0.3:
+		_trick_kind = "shove"
 	else:
-		_trick_dir = -1.0 if s.x < -0.3 else 1.0
-		_trick_name = "Spin"
+		_trick_kind = "kickflip"
+	_trick_name = TRICKS[_trick_kind]
+	# A heelflip rolls the board the other way; a 360 spins to the left.
+	_trick_dir = -1.0 if _trick_kind in ["heelflip", "spin"] else 1.0
 	_trick_goal = TAU * _trick_dir
 
 
@@ -1187,6 +1303,22 @@ func _end_trick() -> void:
 	else:
 		_trick_goal = 0.0
 	_trick_t = -1.0
+
+
+## How the trick turns the board under the feet now (in the board's own
+## space, about the middle of the deck): a flip rolls it about its length, a
+## shove-it spins it flat, a 360 flip does both. A 360 turns the body instead.
+func board_spin() -> Basis:
+	if _trick_angle == 0.0:
+		return Basis.IDENTITY
+	match _trick_kind:
+		"kickflip", "heelflip":
+			return Basis(Vector3.BACK, _trick_angle)
+		"shove":
+			return Basis(Vector3.UP, _trick_angle)
+		"tre":
+			return Basis(Vector3.UP, _trick_angle) * Basis(Vector3.BACK, _trick_angle)
+	return Basis.IDENTITY
 
 
 # --- Flow and lines -----------------------------------------------------------
@@ -1245,8 +1377,8 @@ static func _flat(v: Vector3) -> Vector3:
 
 # --- The body -----------------------------------------------------------------
 
-## Turns, tips and poses the body, and picks the clip. Runs on the physics
-## tick, so physics interpolation smooths it.
+## Turns, tips and poses the body, puts the board where it goes, and picks
+## the clip. Runs on the physics tick, so physics interpolation smooths it.
 func _update_body(dt: float) -> void:
 	var k := 1.0 - exp(-SNAP_EASE * dt) if dt > 0.0 else 1.0
 	_offset = _offset.lerp(Vector3.ZERO, k)
@@ -1278,8 +1410,9 @@ func _update_body(dt: float) -> void:
 	var b := Basis(lean_axis.normalized(), _lean) * yaw_basis if lean_axis.length() > 0.01 else yaw_basis
 	if _pitch > 0.01:
 		b = Basis(yaw_basis.x, _pitch) * b
-	# A trick turns the body once round (a spin about its height, a flip
-	# about the hips), and finishes or unwinds quickly when the air is gone.
+	# A trick goes once round (the board's flip or spin, or the whole body's
+	# 360 about its height), and finishes or unwinds quickly when the air is
+	# gone.
 	if _trick_t >= 0.0:
 		_trick_angle = _trick_goal * smoothstep(0.0, 1.0, _trick_t / TRICK_TIME)
 	elif _trick_angle != 0.0:
@@ -1287,17 +1420,169 @@ func _update_body(dt: float) -> void:
 		if absf(_trick_angle) >= TAU - 0.001:
 			_trick_angle = 0.0
 	var turned := Basis.IDENTITY
-	if _trick_angle != 0.0:
-		turned = Basis(yaw_basis.x if _trick_flip else Vector3.UP, _trick_angle)
+	if _trick_angle != 0.0 and _trick_kind == "spin":
+		turned = Basis(Vector3.UP, _trick_angle)
 		b = turned * b
 	if state == State.CLIMB and _c_mantle < 0.0:
 		# The swimming clip, stood up against the wall, climbs.
 		b = yaw_basis * Basis(Vector3.RIGHT, -PI * 0.5)
-		shift = Vector3.UP * 0.95 - climb_out * 0.25
+		shift = Vector3.UP * 1.04 - climb_out * 0.25
 	var pivot := Vector3.UP * TRICK_PIVOT
 	body.transform = Transform3D(b, _offset + shift + pivot - turned * pivot)
+	if _pop >= 0.0:
+		_pop += dt
+		if _pop > POP_TIME:
+			_pop = -1.0
+	var kicking := state == State.SKATE and _pushing and stumble <= 0.0
+	_push_w = move_toward(_push_w, 1.0 if kicking else 0.0, dt * 5.0)
+	_push_phase = fposmod(_push_phase + dt * PUSH_RATE, 1.0) if _push_w > 0.0 else 0.0
 	if person:
+		_update_board(dt)
 		_pose()
+
+
+## Where the board goes, and how the person stands: on it (side on, the
+## board flipping, popping, tipping onto its back wheels or across a line
+## under the feet), held by the nose while painting, or on the backpack
+## while climbing or held.
+func _update_board(dt: float) -> void:
+	if person.board == null:
+		return
+	var on_back := state in [State.CLIMB, State.PICKED_UP] or (state == State.PAINT and _held_from == State.CLIMB)
+	var held := state == State.PAINT and not on_back
+	var riding := not on_back and not held
+	var e := 1.0 - exp(-BOARD_EASE * dt) if dt > 0.0 else 1.0
+	var slide := state == State.GRIND and grind_trick == "Boardslide"
+	# Side on to the board, or square to the wall, the pipe or a boardslide's line.
+	_p_yaw = lerp_angle(_p_yaw, -PI * 0.5 if riding and not slide else 0.0, e * 0.7 if dt > 0.0 else 1.0)
+	var want_ride := 0.0
+	if state == State.GRIND:
+		want_ride = -SLIDE_DROP if slide else -GRIND_DROP
+	_ride_y = lerpf(_ride_y, want_ride, e)
+	_lift = lerpf(_lift, Person.DECK_TOP if riding else 0.0, e)
+	person.transform = Transform3D(Basis(Vector3.UP, _p_yaw), Vector3(0.0, _ride_y, 0.0))
+	person.lift(_lift)
+	# Under the feet: popped, tipped and drawn up in the air, then flipped.
+	var local := Transform3D.IDENTITY
+	var lift := 0.0
+	if riding:
+		var tuck := AIR_TUCK * smoothstep(0.0, 0.16, _air_time) if state == State.AIR else 0.0
+		var tip := 0.0
+		var pivot := 0.0
+		if _pop >= 0.0:
+			var u := _pop / POP_TIME
+			tip = POP_PITCH * (smoothstep(0.0, 0.22, u) - smoothstep(0.3, 1.0, u))
+			pivot = -0.37
+		elif manual:
+			tip = MANUAL_PITCH
+			pivot = -0.2
+		elif state == State.GRIND and grind_trick == "Nosegrind":
+			tip = -deg_to_rad(10.0)
+			pivot = 0.2
+		local = Transform3D(Basis.IDENTITY, Vector3.UP * tuck) * _about(Vector3(0.0, 0.03, pivot), Basis(Vector3.RIGHT, -tip))
+		if _trick_kind != "spin":
+			lift = FLIP_LIFT * sin(PI * clampf(absf(_trick_angle) / TAU, 0.0, 1.0))
+	var board_at := Person.STANCE * local * Transform3D(Basis.IDENTITY, Vector3.DOWN * lift * 0.4) \
+			* _about(FLIP_PIVOT, board_spin())
+	if on_back != person.board_on_back():
+		person.carry_on_back(on_back)
+	var target := Transform3D.IDENTITY if on_back else (Person.HELD if held else board_at)
+	# Stopping to paint off the board: the tail kicked, the nose up into the hand.
+	if held and _kick < 0.0:
+		_kick = 0.0
+	if not held:
+		_kick = -1.0
+	var kicking := held and _kick >= 0.0 and _kick < KICK_TIME
+	if kicking:
+		_kick += dt
+		var u := clampf(_kick / KICK_TIME, 0.0, 1.0)
+		var up := Person.STANCE * _about(Vector3(0.0, 0.02, -0.4), Basis(Vector3.RIGHT, -KICK_PITCH * smoothstep(0.0, 0.5, u)))
+		target = up.interpolate_with(Person.HELD, smoothstep(0.5, 1.0, u))
+	var snap := kicking or (riding and (_trick_angle != 0.0 or _pop >= 0.0))
+	person.board.transform = target if snap or dt <= 0.0 else person.board.transform.interpolate_with(target, e)
+	_pose_rig(dt, riding, held, Person.STANCE * local * Transform3D(Basis.IDENTITY, Vector3.UP * lift))
+
+
+## Sets the BoardRig for the state: the feet on `stand` (where the deck is
+## under them, in the person's space), the knees, the twist towards the
+## nose, the arms, and the hand on the nose while painting.
+func _pose_rig(dt: float, riding: bool, held: bool, stand: Transform3D) -> void:
+	var r := person.rig
+	r.active = riding or held
+	if not r.active:
+		_rig.clear()
+		return
+	r.stand = stand
+	var want := {"crouch": 0.06, "twist": deg_to_rad(70.0), "arms": 0.25, "lean": 0.0, "feet": 1.0, "hand": 0.0,
+		"front_yaw": deg_to_rad(28.0)}
+	match state:
+		State.SKATE:
+			if stumble > 0.0:
+				want.crouch = 0.2
+				want.arms = 0.6
+			elif crouching:
+				want.crouch = 0.05
+				want.arms = 0.35
+			elif _land_time > 0.0:
+				want.crouch = 0.16
+				want.arms = 0.5
+			elif manual:
+				want.crouch = 0.03
+				want.lean = -0.08
+				want.arms = 0.95
+				want.twist = deg_to_rad(55.0)
+			elif _push_w > 0.0:
+				want.crouch = lerpf(0.06, 0.13, _push_w)
+				want.twist = lerpf(want.twist, deg_to_rad(92.0), _push_w)
+				want.front_yaw = lerpf(want.front_yaw, deg_to_rad(72.0), _push_w)
+				want.lean = 0.04 * _push_w
+				want.arms = 0.15
+			elif speed < 0.5:
+				want.crouch = 0.03
+		State.AIR:
+			want.crouch = 0.04
+			want.arms = 0.7
+			want.twist = deg_to_rad(60.0)
+		State.GRIND:
+			want.crouch = 0.04
+			want.arms = 0.9
+			want.twist = deg_to_rad(15.0) if grind_trick == "Boardslide" else deg_to_rad(60.0)
+		State.WALL:
+			want.crouch = 0.05
+			want.arms = 0.75
+			want.twist = deg_to_rad(60.0)
+		State.PAINT:
+			want = {"crouch": 0.0, "twist": 0.0, "arms": 0.0, "lean": 0.0, "feet": 0.0, "hand": 1.0, "front_yaw": 0.0}
+	if _rig.is_empty() or dt <= 0.0:
+		_rig = want.duplicate()
+	var e := 1.0 - exp(-12.0 * dt) if dt > 0.0 else 1.0
+	for key in want:
+		# The hand reaches for the nose once the board has come up to it.
+		_rig[key] = lerpf(_rig[key], want[key], e * (0.5 if key == "hand" else 1.0))
+	r.crouch = _rig.crouch
+	r.twist = _rig.twist
+	r.arms_out = _rig.arms
+	r.lean = _rig.lean
+	r.front_on = _rig.feet
+	r.back_on = _rig.feet
+	r.hand_on = _rig.hand
+	r.front_yaw = _rig.front_yaw
+	# Pushing, the back foot comes off the tail and kicks along the ground
+	# on the toe side.
+	var deck := Vector3(0.07, Person.DECK_TOP, -0.25)
+	var kick := Vector3(-0.17, 0.0, 0.1)
+	if _push_phase < PUSH_DOWN:
+		kick.z = lerpf(0.1, -0.45, _push_phase / PUSH_DOWN)
+	else:
+		var u := (_push_phase - PUSH_DOWN) / (1.0 - PUSH_DOWN)
+		kick = Vector3(-0.17, sin(u * PI) * 0.12, lerpf(-0.45, 0.1, u))
+	r.back_spot = deck.lerp(kick, smoothstep(0.0, 1.0, _push_w))
+	r.back_yaw = lerpf(deg_to_rad(-6.0), deg_to_rad(70.0), _push_w)
+
+
+## A turn `b` about a point `at`.
+static func _about(at: Vector3, b: Basis) -> Transform3D:
+	return Transform3D(Basis.IDENTITY, at) * Transform3D(b, Vector3.ZERO) * Transform3D(Basis.IDENTITY, -at)
 
 
 func _pose() -> void:
@@ -1309,10 +1594,8 @@ func _pose() -> void:
 				_play("Crouch_Idle", 0.2)
 			elif _land_time > 0.0:
 				_play("NinjaJump_Land", 0.05, 1.4)
-			elif _boosting or (input.move.length() > 0.2 and speed < PUSH_TOP * 0.97):
-				_play("Sprint", 0.25, clampf(0.35 + speed / PUSH_TOP * 0.3, 0.35, 0.7))
-			elif speed > 0.5:
-				_hold_pose("Jump_Land", 0.62)
+			elif _push_w > 0.5:
+				_play("Walk", 0.3, 1.1)
 			else:
 				_play("Idle", 0.3)
 		State.AIR:
@@ -1340,17 +1623,3 @@ func _play(clip: String, blend := 0.2, rate := 1.0) -> void:
 	else:
 		person.anim.speed_scale = rate
 
-
-## Holds a clip at one moment, as a stance: it blends in while playing up
-## to that moment, then stops there.
-func _hold_pose(clip: String, at: float, blend := 0.25) -> void:
-	var key := "%s@%s" % [clip, at]
-	if _clip != key:
-		_clip = key
-		_freeze_in = blend
-		person.play(clip, blend, 1.0, true)
-		person.anim.seek(maxf(person.clip_length(clip) * at - blend, 0.0), false)
-	elif _freeze_in > 0.0:
-		_freeze_in -= get_physics_process_delta_time()
-		if _freeze_in <= 0.0:
-			person.anim.speed_scale = 0.0

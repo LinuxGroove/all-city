@@ -25,8 +25,9 @@ this game wears.
 
 Outfits so far:
 - streetwear (male and female): a writer's baggy hoodie (hood down, drawstrings, a pouch pocket,
-  ribbed cuffs and hem) and cargo trousers (thigh pockets with flaps, a hem that stacks over the
-  skates' boots).
+  ribbed cuffs and hem), wide skate trousers with cargo pockets that hang straight and stack over
+  chunky skate shoes (cupsoles and laces), and a backpack with straps over the shoulders and two
+  loops across its back that the skateboard slots into for climbing.
 """
 import bpy, bmesh, math, os, sys
 import numpy as np
@@ -41,6 +42,7 @@ WANT = set(ARGS[2:])
 BODIES = {"male": "Superhero_Male_FullBody.gltf", "female": "Superhero_Female_FullBody.gltf"}
 UP = np.array([0.0, 0.0, 1.0])
 FWD = np.array([0.0, -1.0, 0.0])  # the bodies face -Y in Blender
+SOLE = 0.016  # the shoes' soles reach this far below the bare foot (Person.SOLE lifts the body by it)
 
 
 
@@ -629,9 +631,12 @@ class Street:
         self.R_top, self.ease_top = 0.08, 0.032
         self.R_skirt, self.ease_skirt = 0.1, 0.045
         self.skirt_blend = 0.12
-        self.R_pants, self.ease_pants = 0.034, 0.02
+        self.R_pants, self.ease_pants = 0.045, 0.034
         self.z_pants = b.pelvis_z + 0.09
-        self.z_leg = b.ankle[2] + 0.04            # the trousers' hem
+        self.z_leg = b.ankle[2] - 0.012           # the trousers' hem at the back of the heel
+        self.hem_rise = 0.32                      # and how much higher it is towards the toe, per metre
+        self.leg_max = 0.104                      # no leg wider than this round its middle (< half the ankles' 0.228)
+        self.z_collar = b.ankle[2] + 0.04         # the shoes' collar
         # The neck opening: wide and low, over the slope of the shoulders.
         if self.female:
             dz = [-0.075, -0.07, -0.05, -0.04, -0.04, -0.045, -0.05]
@@ -804,15 +809,18 @@ def hoodie_body(body, s, F, pants):
 
 
 def cargo_trousers(body, s):
-    """Cargo trousers from the waist to a hem that falls over the boots, hanging straight."""
+    """Wide skate trousers from the waist down over the shoes: each leg hangs straight from the
+    thigh, a little wider at the bottom, and stacks in folds over the shoe, its hem higher over the
+    toe than at the heel."""
     c = body.co
     legs = (body.w_leg > 0.2) | (body.w_pelvis > 0.2) | (body.w_foot > 0.2)
     F = Field(body.triangles(legs & (c[:, 2] < s.z_pants + 0.1)))
-    keep = (c[:, 2] < s.z_pants + 0.05) & (c[:, 2] > s.z_leg - 0.04) & (body.w_foot < 0.5) & (body.w_head < 0.1) & (body.w_hand < 0.1)
+    z_band = body.ankle[2] + 0.04
+    keep = (c[:, 2] < s.z_pants + 0.05) & (c[:, 2] > z_band - 0.04) & (body.w_foot < 0.5) & (body.w_head < 0.1) & (body.w_hand < 0.1)
     keep &= np.abs(c[:, 0]) < 0.35
     bm = body_piece(body, keep)
     cut(bm, (0, 0, s.z_pants), (0, 0, 1))
-    cut(bm, (0, 0, s.z_leg), (0, 0, -1))
+    cut(bm, (0, 0, z_band), (0, 0, -1))
     subdivide(bm)
     set_coords(bm, F.onto(coords(bm), s.R_pants, s.ease_pants))
     settle(bm, F, s.R_pants, s.ease_pants)
@@ -820,38 +828,237 @@ def cargo_trousers(body, s):
     for side in (1, -1):
         a = body.hip * [side, 1, 1]
         b = body.ankle * [side, 1, 1]
-        P = drape(P, P[:, 0] * side > 0.025, a, b, taper=0.055, t0=0.12)
+        P = drape(P, P[:, 0] * side > 0.025, a, b, taper=0.012, t0=0.1)
     set_coords(bm, P)
     smooth(bm, 8)
     P = F.onto(coords(bm), s.R_pants, s.ease_pants * 0.7, outward_only=True)
-    # Wide at the ankle, with a couple of folds where the legs stack up.
-    for side in (1, -1):
-        ax = body.ankle * [side, 1, 1]
-        m = (P[:, 0] * side > 0.02) & (P[:, 2] < ax[2] + 0.5)
-        rv = P[m][:, :2] - ax[:2]
-        r = np.linalg.norm(rv, axis=1)
-        up = P[m][:, 2] - s.z_leg
-        flare = 0.012 * smoothstep(0.45, 0.0, up)
-        fold = 0.007 * np.sin(up * 2 * np.pi / 0.085) * smoothstep(0.26, 0.04, up) * smoothstep(0.0, 0.02, up)
-        P[np.nonzero(m)[0], :2] = ax[:2] + rv / np.maximum(r, 1e-6)[:, None] * (r + flare + fold)[:, None]
+    P = keep_legs_apart(body, s, P)
     set_coords(bm, P)
     smooth(bm, 2)
-    # The hem turned in a little, so it reads as cloth with a thickness.
+    P = keep_legs_apart(body, s, coords(bm))
+    set_coords(bm, P)
+    # No cloth across the gap below the crotch: a face there would stretch between the knees.
+    z_crotch = body.hip[2] - 0.13
+    web = [f for f in bm.faces if max(v.co.z for v in f.verts) < z_crotch
+           and min(v.co.x for v in f.verts) < 0.0 < max(v.co.x for v in f.verts)]
+    if web:
+        print("trousers: %d faces across the legs taken out" % len(web))
+        bmesh.ops.delete(bm, geom=web, context="FACES")
+    # The stack: the leg's edge carried on down over the shoe in rings that flare and fold.
     bm.verts.ensure_lookup_table()
-    loop = [e for e in bm.edges if e.is_boundary and all(v.co.z < s.z_leg + 0.03 for v in e.verts)]
-    for e in loop:
+    edges = [e for e in bm.edges if e.is_boundary and all(v.co.z < z_band + 0.01 for v in e.verts)]
+    for e in edges:
         for v in e.verts:
-            v.co.z = s.z_leg
-    ret = bmesh.ops.extrude_edge_only(bm, edges=loop)
+            v.co.z = z_band
+    rings = 5
+    for k in range(1, rings + 1):
+        ret = bmesh.ops.extrude_edge_only(bm, edges=edges)
+        verts = [g for g in ret["geom"] if isinstance(g, bmesh.types.BMVert)]
+        f = k / rings
+        for v in verts:
+            side = 1 if v.co.x > 0 else -1
+            ax = body.ankle * [side, 1, 1]
+            hem = s.z_leg + s.hem_rise * max(0.0, ax[1] - v.co.y)
+            v.co.z = z_band + (hem - z_band) * f
+            r = Vector((v.co.x - ax[0], v.co.y - ax[1], 0))
+            grow = 0.01 * f + (0.007 if k % 2 else -0.003)
+            out = r.normalized() * min(r.length + grow, s.leg_max)
+            v.co.x, v.co.y = ax[0] + out.x, ax[1] + out.y
+        vs = set(verts)
+        edges = [g for g in ret["geom"] if isinstance(g, bmesh.types.BMEdge) and all(v in vs for v in g.verts)]
+    # The hem turned in a little, so it reads as cloth with a thickness.
+    ret = bmesh.ops.extrude_edge_only(bm, edges=edges)
     for g in ret["geom"]:
         if isinstance(g, bmesh.types.BMVert):
             side = 1 if g.co.x > 0 else -1
             ax = body.ankle * [side, 1, 1]
             r = Vector((g.co.x - ax[0], g.co.y - ax[1], 0))
-            g.co -= r.normalized() * 0.008
-            g.co.z += 0.02
+            g.co -= r.normalized() * 0.009
+            g.co.z += 0.022
     recalc(bm)
     return bm, F
+
+
+def keep_legs_apart(body, s, P):
+    """Below the crotch, each leg stays on its own side of the middle and no wider than leg_max
+    round the line from hip to ankle (cloth crossing the middle would take the other leg's
+    weights, and string between the legs as they move)."""
+    P = P.copy()
+    z_crotch = body.hip[2] - 0.13
+    for side in (1, -1):
+        a = body.hip * [side, 1, 1]
+        b = body.ankle * [side, 1, 1]
+        idx = np.nonzero((P[:, 0] * side > 0.0) & (P[:, 2] < z_crotch))[0]
+        Q = P[idx]
+        t = np.clip((Q[:, 2] - a[2]) / (b[2] - a[2]), 0.0, 1.0)
+        axis = a + (b - a) * t[:, None]
+        rv = Q[:, :2] - axis[:, :2]
+        r = np.linalg.norm(rv, axis=1)
+        k = smoothstep(z_crotch, z_crotch - 0.12, Q[:, 2])
+        cap = s.leg_max * k + np.maximum(r, s.leg_max) * (1 - k)
+        Q[:, :2] = axis[:, :2] + rv / np.maximum(r, 1e-6)[:, None] * np.minimum(r, cap)[:, None]
+        Q[:, 0] = side * np.maximum(Q[:, 0] * side, 0.008)
+        P[idx] = Q
+    return P
+
+
+def skate_shoes(body, s):
+    """Chunky skate shoes: a padded upper over each foot on a flat cupsole, and laces across the
+    tongue."""
+    c = body.co
+    feet = body.w_foot > 0.2
+    F = Field(body.triangles(feet | ((body.w_leg > 0.2) & (c[:, 2] < s.z_collar + 0.08))), h=0.004)
+    keep = ((body.w_foot > 0.3) | (body.w_leg > 0.2)) & (c[:, 2] < s.z_collar + 0.02)
+    bm = body_piece(body, keep)
+    cut(bm, (0, 0, s.z_collar), (0, 0, 1))
+    subdivide(bm, 2)
+    set_coords(bm, F.onto(coords(bm), 0.03, 0.017))
+    settle(bm, F, 0.03, 0.017, rounds=3)
+    # A flat sole under the whole foot.
+    for _ in range(2):
+        P = coords(bm)
+        P[:, 2] = np.where(P[:, 2] < 0.006, -SOLE, P[:, 2])
+        set_coords(bm, P)
+        smooth(bm, 2)
+    P = coords(bm)
+    P[:, 2] = np.where(P[:, 2] < 0.0, -SOLE, P[:, 2])
+    set_coords(bm, P)
+    for e in bm.edges:
+        if e.is_boundary:
+            for v in e.verts:
+                v.co.z = s.z_collar
+    recalc(bm)
+    # The sole is the low band of the shell, the upper the rest.
+    sole = bm.copy()
+    bmesh.ops.delete(sole, geom=[f for f in sole.faces if f.calc_center_median().z > 0.016], context='FACES')
+    bmesh.ops.delete(sole, geom=[v for v in sole.verts if not v.link_faces], context='VERTS')
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.calc_center_median().z <= 0.016], context='FACES')
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    upper = solidify(bm, 0.004, even=False)
+    # Laces: bars across the top of the foot.
+    bvh = bvh_of(upper)
+    laces = bmesh.new()
+    for side in (1, -1):
+        ax = body.ankle * [side, 1, 1]
+        for k in range(4):
+            y = ax[1] - 0.04 - k * 0.022
+            pts = []
+            for u in np.linspace(-1, 1, 5):
+                p, _n = hit(bvh, (ax[0] + u * 0.022, y, 0.4), (0, 0, -1))
+                if p is not None:
+                    pts.append(p + np.array([0, 0, 0.0035]))
+            if len(pts) >= 3:
+                tube(laces, pts, 0.0035, 6)
+    recalc(laces)
+    return upper, sole, laces
+
+
+def backpack(body, s, bvh):
+    """A backpack: a rounded pack on the upper back, resting on the hoodie with the hood bunched
+    under it, straps over the shoulders that come round under the arms, and two loops across its back
+    for the board."""
+    top, bottom = body.neck_z - 0.17, body.neck_z - 0.56
+    w, depth = 0.3, 0.12
+    # The pack rests on the back: against most of what is under it (the hood, bunched under its top, is hidden inside).
+    back = []
+    for x in np.linspace(-w / 2, w / 2, 9):
+        for z in np.linspace(bottom, top, 9):
+            p, _n = hit(bvh, (x, 0.8, z), (0, -1, 0))
+            if p is not None:
+                back.append(p[1])
+    y0 = float(np.percentile(back, 60)) + 0.004
+    pack = bmesh.new()
+    bmesh.ops.create_cube(pack, size=1.0)
+    bmesh.ops.scale(pack, vec=Vector((w, depth, top - bottom)), verts=pack.verts)
+    bmesh.ops.translate(pack, vec=Vector((0, y0 + depth / 2, (top + bottom) / 2)), verts=pack.verts)
+    bmesh.ops.bevel(pack, geom=list(pack.edges), offset=0.04, segments=4, affect="EDGES", profile=0.5, clamp_overlap=True)
+    # Fuller at the back and narrower at the top, as a packed bag sits.
+    for v in pack.verts:
+        u = min(max((v.co.z - bottom) / (top - bottom), 0.0), 1.0)
+        if v.co.y > y0 + depth * 0.5:
+            v.co.y += 0.02 * math.sin(math.pi * u) * max(0.0, 1 - (2 * v.co.x / w) ** 2)
+        if u > 0.75:
+            v.co.x *= 1.0 - (u - 0.75) * 0.5
+    recalc(pack)
+    # A pocket on the pack's back.
+    pocket = bmesh.new()
+    bmesh.ops.create_cube(pocket, size=1.0)
+    bmesh.ops.scale(pocket, vec=Vector((w * 0.68, 0.035, (top - bottom) * 0.4)), verts=pocket.verts)
+    bmesh.ops.translate(pocket, vec=Vector((0, y0 + depth + 0.004, bottom + (top - bottom) * 0.25)), verts=pocket.verts)
+    bmesh.ops.bevel(pocket, geom=list(pocket.edges), offset=0.014, segments=3, affect="EDGES", profile=0.5, clamp_overlap=True)
+    recalc(pocket)
+    # The loops the board slides under, across the pack's back.
+    loops = bmesh.new()
+    for z in (bottom + (top - bottom) * 0.62, top - (top - bottom) * 0.12):
+        bmesh.ops.create_cube(loops, size=1.0, matrix=Matrix.Translation(Vector((0, y0 + depth + 0.03, z)))
+                              @ Matrix.Diagonal(Vector((w + 0.012, 0.016, 0.038, 1.0))))
+    # The straps: from the pack's top over each shoulder, down the chest to a buckle, and back
+    # round the ribs under the arm to the pack's bottom corner.
+    straps = bmesh.new()
+    buckles = bmesh.new()
+    front = -0.25
+    for side in (1, -1):
+        key = [
+            (side * 0.085, y0 + 0.01, top - 0.03),
+            (side * 0.1, 0.03, body.neck_z - 0.02),
+            (side * 0.12, -0.06, body.neck_z - 0.05),
+            (side * 0.125, front, body.neck_z - 0.16),
+            (side * 0.13, front, body.neck_z - 0.3),
+        ]
+        upper = band_on(bvh, key, 0.052, 0.008)
+        grid_faces(straps, [new_verts(straps, r) for r in upper], closed=True)
+        end = np.mean(upper[-1], 0)
+        key2 = [
+            tuple(end + np.array([0, 0, -0.03])),
+            (side * 0.17, front, body.neck_z - 0.37),
+            (side * 0.21, 0.0, body.neck_z - 0.42),
+            (side * 0.13, y0 + 0.01, bottom + 0.05),
+        ]
+        lower = band_on(bvh, key2, 0.032, 0.007)
+        grid_faces(straps, [new_verts(straps, r) for r in lower], closed=True)
+        n = end - np.mean(upper[-2], 0)
+        disc(buckles, end + np.array([0.0, -0.006, -0.01]), (0, -1, 0), 0.022, 0.009, 4, spin=math.pi / 4)
+    recalc(straps)
+    return pack, pocket, loops, straps, buckles
+
+
+def band_on(bvh, key, width, thick, step=0.012):
+    """A flat strap along a path of key points, laid on the nearest surface of bvh: rings of four
+    points, a thin rectangle round the path."""
+    K = np.array(key, float)
+    seg = np.linalg.norm(np.diff(K, axis=0), axis=1)
+    at = np.r_[0.0, np.cumsum(seg)]
+    n = max(int(at[-1] / step), 4)
+    ts = np.linspace(0, at[-1], n)
+    P = np.stack([np.interp(ts, at, K[:, k]) for k in range(3)], 1)
+    N = np.zeros_like(P)
+    for _round in range(5):
+        for i, p in enumerate(P):
+            loc, nrm, _i, _d = bvh.find_nearest(Vector(p))
+            if loc is not None:
+                P[i] = np.array(loc) + np.array(nrm) * (thick * 0.5 + 0.004)
+                N[i] = np.array(nrm)
+        P[1:-1] = (P[:-2] + 2 * P[1:-1] + P[2:]) / 4
+    rows = []
+    for i, p in enumerate(P):
+        t = P[min(i + 1, n - 1)] - P[max(i - 1, 0)]
+        t /= max(np.linalg.norm(t), 1e-6)
+        nn = N[i] - (N[i] @ t) * t
+        nn /= max(np.linalg.norm(nn), 1e-6)
+        b = np.cross(t, nn)
+        h, d = width / 2, thick / 2
+        rows.append([p + b * h + nn * d, p - b * h + nn * d, p - b * h - nn * d, p + b * h - nn * d])
+    return rows
+
+
+def to_spine(body):
+    """The pack rides the upper back like a rigid thing: all of it on the spine's top bones."""
+    def fn(P, W):
+        W = np.zeros_like(W)
+        W[:, body.group("spine_03")] = 0.75
+        W[:, body.group("spine_02")] = 0.25
+        return W
+    return fn
 
 
 def face_out(bm, axis_y):
@@ -1042,7 +1249,7 @@ def trim_body(body, s):
     neck = ((c[:, 2] > s.neck(np.arctan2(dx, -dy)) - 0.03) & (np.hypot(dx, dy) < 0.1)) \
         | ((c[:, 2] > body.neck_z + 0.02) & (np.hypot(dx, dy) < 0.17))
     keep_skin(body, (np.abs(c[:, 0]) > s.skin_hand) | neck | ((body.w_head > 0.5) & (c[:, 2] > body.neck_z + 0.08))
-              | (c[:, 2] < s.z_leg + 0.02))
+              | (c[:, 2] < s.z_collar + 0.01))
     bm = bmesh.new()
     bm.from_mesh(body.obj.data)
 
@@ -1072,13 +1279,21 @@ def streetwear(body):
     pocket = pouch(body, s, front)
     cords, tips = drawstrings(body, s, front)
     flaps, buttons = cargo_pockets(body, s, pants_bvh)
+    shoes, soles, laces = skate_shoes(body, s)
+    pack, pack_pocket, loops, straps, buckles = backpack(body, s, bvh_union([shell, low, bag, cowl]))
     trim_body(body, s)
     add_part(body, "Hoodie", [shell, low, pocket])
     add_part(body, "Hood", [cowl, bag], smooth_weights=3)
     add_part(body, "Rib", [rib, hem])
     add_part(body, "Strings", [cords])
-    add_part(body, "Metal", [tips, buttons], smooth_shade=False)
+    add_part(body, "Metal", [tips, buttons, buckles], smooth_shade=False)
     add_part(body, "Trousers", [pants, flaps], foot_to_calf(body))
+    add_part(body, "Shoes", [shoes])
+    add_part(body, "Soles", [soles])
+    add_part(body, "Laces", [laces])
+    add_part(body, "Pack", [pack, pack_pocket], to_spine(body))
+    add_part(body, "Straps", [straps], smooth_weights=4)
+    add_part(body, "Loops", [loops], to_spine(body), smooth_shade=False)
 
 
 # Each outfit and the bodies it's made for.

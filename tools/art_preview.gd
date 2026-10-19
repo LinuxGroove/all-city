@@ -270,21 +270,23 @@ func _scene(stage: Node3D, cam: Camera3D, view: String) -> void:
 	var rail: PackedVector3Array = flight.rails[0]
 	var grinder := Person.make("writer", true, 4, {"main": Palette.color("signal_yellow"), "legs": Palette.color("ink")})
 	var on := rail[0].lerp(rail[1], 0.45)
-	grinder.position = on + Vector3(0, -Person.SKATE_LIFT + 0.02, 0)
-	grinder.rotation.y = PI * 0.5
+	grinder.position = on + Vector3(0, 0.03 - Skater.GRIND_DROP, 0)
 	stage.add_child(grinder)
 	grinder.pose("Crouch_Idle", 0.3)
+	grinder.grind_still(rail[0] - rail[1])
 	var painter := Person.make("writer", false, 9, {"main": Palette.color("purple"), "accent": Palette.color("hivis")})
 	painter.position = Vector3(-6.7, curb, -6.5)
 	painter.rotation.y = PI
 	stage.add_child(painter)
 	painter.pose("Pistol_Aim_Neutral", 0.5)
 	painter.hold_can(Palette.color("neon_cyan"))
+	painter.hold_board_still()
 	var lookout := Person.make("writer", true, 2, {"main": Palette.color("signal_red")})
 	lookout.position = Vector3(8.0, curb, -6.6)
 	lookout.rotation.y = -0.5
 	stage.add_child(lookout)
 	lookout.pose("Idle_FoldArms", 0.3)
+	lookout.board_on_pack_still()
 	var buff := Person.make("buff", false, 5)
 	buff.position = Vector3(12.6, curb, -4.9)
 	buff.rotation.y = PI * 0.6
