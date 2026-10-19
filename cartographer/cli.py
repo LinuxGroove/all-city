@@ -41,6 +41,8 @@ def main(argv=None):
     b.add_argument("--out", help="the town's folder (default: the game's towns folder)")
     b.add_argument("--id", help="the town's id (default: from its name)")
     b.add_argument("--flat", action="store_true", help="don't fetch elevation: the land is flat")
+    b.add_argument("--no-lidar", action="store_true",
+                   help="don't look for an open lidar survey (heights, ground and trees by rule)")
     b.add_argument("--cache", default=os.path.join(os.path.expanduser("~"), ".cache", "all-city"))
     m = sub.add_parser("map", help="draw a built town")
     m.add_argument("folder")
@@ -91,7 +93,8 @@ def main(argv=None):
     print("Building %s into %s" % (name, out), flush=True)
     stats = build.build_town(pbf, out, town_id, name, lat, lon, radius=args.radius, country=country,
                              terrain_source="flat" if args.flat else "terrarium",
-                             cache=os.path.join(args.cache, "terrain"))
+                             cache=os.path.join(args.cache, "terrain"), lidar_mode="off" if args.no_lidar else "auto",
+                             lidar_cache=args.cache)
     print("Built %s in %.0f s: %d buildings, %d walls, %d flights of steps, %.1f MB of tiles" % (
         name, time.time() - t0, stats["buildings"], stats["walls"], stats["flights"], stats["tile_bytes"] / 1e6))
     return 0

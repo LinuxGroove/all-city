@@ -15,6 +15,12 @@ Made by Drew, Kaden, and Ken VanDine, the LinuxGroove team.
 - The land's shape comes from the Mapzen Terrarium elevation tiles on AWS
   Open Data (SRTM, GMTED, NED, ETOPO1 and others; see
   [their attribution](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)).
+- Where an open lidar survey covers a town, the Cartographer measures its
+  buildings' heights and roofs, its ground and its trees from it: the
+  U.S. Geological Survey's 3D Elevation Program, or NOAA Office for Coastal
+  Management's Digital Coast (Durham's is the 2015 NCFMP Lidar: Statewide
+  North Carolina, Phase 3, from the North Carolina Floodplain Mapping
+  Program), both public domain. Each town's card names its survey.
 - Shops and businesses show as what they are with made-up signs, never by
   their real names, and no house numbers appear.
 

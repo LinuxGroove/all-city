@@ -60,8 +60,9 @@ func buffers() -> Dictionary:
 	return out
 
 
-## The MultiMeshInstance3Ds for `buffers()`, under `parent`.
-static func nodes(bufs: Dictionary, parent: Node3D, shadows := true, range_end := 0.0) -> void:
+## The MultiMeshInstance3Ds for `buffers()`, under `parent`, shown from
+## `range_begin` out to `range_end` (0 for no limit).
+static func nodes(bufs: Dictionary, parent: Node3D, shadows := true, range_end := 0.0, range_begin := 0.0) -> void:
 	for model in bufs:
 		var mesh := Kit.mesh(model)
 		if mesh == null:
@@ -80,6 +81,10 @@ static func nodes(bufs: Dictionary, parent: Node3D, shadows := true, range_end :
 		if range_end > 0.0:
 			node.visibility_range_end = range_end
 			node.visibility_range_end_margin = 8.0
+			node.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		if range_begin > 0.0:
+			node.visibility_range_begin = range_begin
+			node.visibility_range_begin_margin = 8.0
 			node.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		if model.begins_with("facade/window") or model.begins_with("facade/shop"):
 			node.set_instance_shader_parameter("lit_share", 0.38)

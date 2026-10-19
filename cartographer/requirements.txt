@@ -3,3 +3,7 @@ osmium>=4.0
 shapely>=2.1
 numpy>=1.26
 pillow>=10.0
+pyproj>=3.6
+laspy[lazrs]>=2.5
+scipy>=1.11
+rasterio>=1.3

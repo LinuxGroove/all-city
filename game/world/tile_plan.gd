@@ -25,6 +25,10 @@ const BURY := 1.5
 ## Facades are batched by blocks of this size, so far blocks drop out.
 const BLOCK := 128.0
 const ROOFS := {"brick": "slate", "plaster": "stone", "modern": "concrete_light", "works": "steel_dark"}
+## Pitched roofs: shingles, mostly, and some tin.
+const PITCHED := ["slate", "slate", "steel_dark", "asphalt_light", "terracotta", "iron_green", "steel"]
+## Trees past this share of the props' range are drawn as their far models.
+const TREE_NEAR := 1.1
 const STAIR_WALLS := ["stone", "concrete_light", "cream", "concrete"]
 const GARDEN_WALLS := ["brick", "stone", "concrete_light", "cream", "brick_dark"]
 const RAIL_RADIUS := 0.03
@@ -60,6 +64,14 @@ var tubes := []
 var facades := {}
 var props := {}
 var steps := {}
+## The trees, near (full models, with the detail) and far (simple ones,
+## always): MultiMesh buffers like the props'.
+var trees_near := {}
+var trees_far := {}
+## Landmarks (shown at any distance): their own geometry in palette swatches,
+## and the kit models as MultiMesh buffers.
+var landmark_mesh := []
+var landmark_models := {}
 ## Collision: the built things as triangles, and props and ramps as
 ## [kind ("post" or "box"), size (Vector3; x is a post's radius), Transform3D].
 var solid_faces := PackedVector3Array()
@@ -86,6 +98,8 @@ static func make(tile: Dictionary, with_detail: bool, ctx: Dictionary) -> TilePl
 	plan._ground(tile)
 	plan._water(tile.water)
 	plan._shells(tile.buildings)
+	plan._trees(tile.get("trees", {}), with_detail)
+	plan._landmarks(tile.get("landmarks", []), with_detail)
 	if with_detail:
 		plan._detail(tile, ctx)
 	plan.build_ms = (Time.get_ticks_usec() - t0) / 1000.0
@@ -194,18 +208,30 @@ static func wall_colour(b: Dictionary) -> Color:
 ## when a parapet stands on that, so the parapet is a hop high, as on a
 ## real roof; otherwise where the walls end.
 static func deck(b: Dictionary) -> float:
-	var style: Dictionary = Facade.STYLES.get(str(b.style), Facade.STYLES.plaster)
-	return crest(b) - 0.95 if style.top.has("parapet") else float(b.top)
+	return crest(b) - 0.95 if tops(b).has("parapet") else float(b.top)
 
 
 ## How high a building's facade reaches: its roof plus the style's cornice
 ## and parapet.
 static func crest(b: Dictionary) -> float:
-	var style: Dictionary = Facade.STYLES.get(str(b.style), Facade.STYLES.plaster)
 	var y := float(b.top)
-	for piece in style.top:
+	for piece in tops(b):
 		y += 0.6 if piece == "cornice" else 0.95
 	return y
+
+
+## What tops a building's walls: the style's cornice and parapet, or just
+## the eaves (a cornice) under a pitched roof.
+static func tops(b: Dictionary) -> Array:
+	if b.has("roof"):
+		return ["cornice"]
+	var style: Dictionary = Facade.STYLES.get(str(b.style), Facade.STYLES.plaster)
+	return style.top
+
+
+## A pitched roof's colour, from the building's seed.
+static func pitched_colour(b: Dictionary) -> Color:
+	return Palette.color(PITCHED[int(b.seed) % PITCHED.size()])
 
 
 ## Every building's shell (walls set back behind the facade, with windows
@@ -247,6 +273,9 @@ func _shells(buildings: Array) -> void:
 						[Vector2(along, v_top), Vector2(along + length, v_top), Vector2(along + length, v_low),
 						Vector2(along, v_low)], normal)
 				along += length
+		if b.has("roof"):
+			roof_count += _pitched(tops, b, colour)
+			continue
 		# The roof, from the Cartographer's triangles over the outline.
 		var flat := _flat_rings(b.rings, top)
 		var tris: PackedInt32Array = b.tris
@@ -260,6 +289,73 @@ func _shells(buildings: Array) -> void:
 	shell_walls = walls.commit_to_arrays()
 	if roof_count > 0:
 		roofs = tops.commit_to_arrays()
+
+
+## Adds a pitched roof (the Cartographer's facets and the gable walls under
+## them) to `st`; returns its triangles.
+func _pitched(st: SurfaceTool, b: Dictionary, wall: Color) -> int:
+	var roof: Dictionary = b.roof
+	var verts: PackedVector3Array = roof.verts
+	var tris: PackedInt32Array = roof.tris
+	# The cornice under the eaves stands 0.6 m proud of the walls' top.
+	var lift := Vector3(0.0, 0.6, 0.0) - corner
+	st.set_color(pitched_colour(b))
+	var n := 0
+	for k in range(0, tris.size(), 3):
+		var a := verts[tris[k]] + lift
+		var c := verts[tris[k + 1]] + lift
+		var d := verts[tris[k + 2]] + lift
+		var normal := (d - a).cross(c - a).normalized()
+		if normal.y < 0.0:
+			normal = -normal
+		st.set_normal(normal)
+		st.add_vertex(a)
+		st.add_vertex(d)
+		st.add_vertex(c)
+		n += 1
+	var walls: PackedVector3Array = roof.walls
+	var mid := Vector3.ZERO
+	for v in verts:
+		mid += v
+	mid /= maxf(1.0, verts.size())
+	st.set_color(wall)
+	for k in range(0, walls.size(), 3):
+		var a := walls[k] + lift
+		var c := walls[k + 1] + lift
+		var d := walls[k + 2] + lift
+		var normal := (c - a).cross(d - a)
+		if normal.length() < 0.0001:
+			continue
+		normal = normal.normalized()
+		var outward := (a + c + d) / 3.0 - (mid + lift)
+		outward.y = 0.0
+		if normal.dot(outward) < 0.0:
+			normal = -normal
+		st.set_normal(normal)
+		# Wound to face out: Godot's front faces are clockwise.
+		if (c - a).cross(d - a).dot(normal) > 0.0:
+			st.add_vertex(a)
+			st.add_vertex(d)
+			st.add_vertex(c)
+		else:
+			st.add_vertex(a)
+			st.add_vertex(c)
+			st.add_vertex(d)
+		n += 1
+	return n
+
+
+## A pitched roof's facets and gable walls as collision triangles.
+func _pitched_solid(b: Dictionary) -> void:
+	var roof: Dictionary = b.roof
+	var verts: PackedVector3Array = roof.verts
+	var tris: PackedInt32Array = roof.tris
+	var lift := Vector3(0.0, 0.6, 0.0) - corner
+	for k in tris:
+		solid_faces.append(verts[k] + lift)
+	var walls: PackedVector3Array = roof.walls
+	for v in walls:
+		solid_faces.append(v + lift)
 
 
 func _flat_rings(rings: Array, y: float) -> PackedVector3Array:
@@ -353,6 +449,7 @@ func _building(b: Dictionary, blocks: Dictionary, prop_batch: Batch) -> void:
 		if not blocks.has(cell):
 			blocks[cell] = Batch.new()
 		var face_rec := rec.duplicate()
+		face_rec["top"] = tops(b)
 		face_rec["ground"] = str(f.ground)
 		face_rec["pipe_at"] = int(f.pipe)
 		face_rec["escape_bay"] = int(f.escape)
@@ -403,6 +500,9 @@ func _building(b: Dictionary, blocks: Dictionary, prop_batch: Batch) -> void:
 			var a_hi := Vector3(a.x, top_crest, a.z)
 			var c_hi := Vector3(c.x, top_crest, c.z)
 			solid_faces.append_array(PackedVector3Array([a, c, c_hi, a, c_hi, a_hi]))
+	if b.has("roof"):
+		_pitched_solid(b)
+		return
 	var flat := _flat_rings(b.rings, roof_y)
 	var roof: PackedInt32Array = b.tris
 	for k in range(0, roof.size(), 3):
@@ -526,6 +626,47 @@ func _prop(p: Dictionary, prop_batch: Batch, ctx: Dictionary) -> void:
 		var ledge := PackedVector3Array([xf * Vector3(box.position.x + 0.05, box.end.y, front),
 				xf * Vector3(box.end.x - 0.05, box.end.y, front)])
 		grind_lines.append([Lines.Kind.LEDGE, _to_town(ledge)])
+
+
+## The tile's trees as MultiMesh buffers: the full models with the detail
+## (and their trunks to bump into), the far ones always.
+func _trees(trees: Dictionary, with_detail: bool) -> void:
+	if trees.is_empty() or (trees.p as PackedVector3Array).is_empty():
+		return
+	var models: Array = trees.models
+	var kinds: PackedByteArray = trees.kind
+	var pts: PackedVector3Array = trees.p
+	var yaws: PackedFloat32Array = trees.yaw
+	var scales: PackedFloat32Array = trees.s
+	var near_batch := Batch.new()
+	var far_batch := Batch.new()
+	for k in pts.size():
+		var model := str(models[kinds[k]])
+		var s := scales[k]
+		var xf := Transform3D(Basis(Vector3.UP, yaws[k]).scaled(Vector3.ONE * s), pts[k] - corner)
+		far_batch.add(model + "_far", xf)
+		if with_detail:
+			near_batch.add(model, xf)
+			shapes.append(["post", Vector3(clampf(0.2 * s, 0.12, 0.6), 3.0, 0.0),
+					Transform3D(Basis.IDENTITY, pts[k] - corner + Vector3.UP * 1.5)])
+	trees_far = far_batch.buffers()
+	if with_detail:
+		trees_near = near_batch.buffers()
+
+
+func _landmarks(list: Array, with_detail: bool) -> void:
+	if list.is_empty():
+		return
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var batch := Batch.new()
+	for lm in list:
+		Landmarks.add(self, lm, st, batch, with_detail)
+	landmark_models = batch.buffers()
+	var arrays := st.commit_to_arrays()
+	if arrays.size() > Mesh.ARRAY_VERTEX and arrays[Mesh.ARRAY_VERTEX] is PackedVector3Array \
+			and not (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).is_empty():
+		landmark_mesh = arrays
 
 
 func _to_town(pts: PackedVector3Array) -> PackedVector3Array:

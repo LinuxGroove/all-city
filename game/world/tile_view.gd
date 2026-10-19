@@ -27,7 +27,7 @@ static func from_plan(p: TilePlan, ctx: Dictionary) -> TileView:
 	view.quarters = p.quarters
 	view.name = "Tile_%d_%d" % [p.key.x, p.key.y]
 	view._ctx = ctx
-	view._todo = [view._make_ground, view._make_water, view._make_shells]
+	view._todo = [view._make_ground, view._make_water, view._make_shells, view._make_far_trees, view._make_landmarks]
 	if p.near:
 		view._todo.append(view._make_detail)
 		view._todo.append(view._make_land)
@@ -38,6 +38,7 @@ static func from_plan(p: TilePlan, ctx: Dictionary) -> TileView:
 			view._todo.append(view._make_batch.bind(block, p.facades[block], float(ctx.facade_range)))
 		view._todo.append(view._make_batch.bind("Props", p.props, float(ctx.props_range)))
 		view._todo.append(view._make_batch.bind("Steps", p.steps, float(ctx.props_range) * 1.5))
+		view._todo.append(view._make_batch.bind("Trees", p.trees_near, float(ctx.props_range) * TilePlan.TREE_NEAR))
 		view._todo.append(view._make_street)
 	return view
 
@@ -64,10 +65,15 @@ func drop_detail() -> void:
 		detail = null
 	_todo = _todo.filter(_is_base)
 	near = false
+	# The near trees went with the detail: the far ones show all the way in.
+	var far_trees := get_node_or_null("FarTrees")
+	if far_trees:
+		for n in far_trees.get_children():
+			(n as GeometryInstance3D).visibility_range_begin = 0.0
 
 
 func _is_base(job: Callable) -> bool:
-	return job.get_method() in [&"_make_ground", &"_make_water", &"_make_shells"]
+	return job.get_method() in [&"_make_ground", &"_make_water", &"_make_shells", &"_make_far_trees", &"_make_landmarks"]
 
 
 func _mesh_node(node_name: String, arrays: Array, mat: Material, parent: Node3D, shadows := true) -> MeshInstance3D:
@@ -166,6 +172,30 @@ func _make_shapes(from: int, to: int) -> void:
 			cs.shape = box
 		cs.transform = s[2]
 		_solid.add_child(cs)
+
+
+## The far trees: simple models without shadows, from where the near ones
+## end (on a near tile) or from anywhere (far tiles have no near ones).
+func _make_far_trees() -> void:
+	if plan.trees_far.is_empty():
+		return
+	var node := Node3D.new()
+	node.name = "FarTrees"
+	add_child(node)
+	var begin := float(_ctx.props_range) * TilePlan.TREE_NEAR - 8.0 if plan.near else 0.0
+	Batch.nodes(plan.trees_far, node, false, 0.0, begin)
+
+
+## Landmarks stay in sight at any distance, as the shells do.
+func _make_landmarks() -> void:
+	if plan.landmark_mesh.is_empty() and plan.landmark_models.is_empty():
+		return
+	var node := Node3D.new()
+	node.name = "Landmarks"
+	add_child(node)
+	if not plan.landmark_mesh.is_empty():
+		_mesh_node("Built", plan.landmark_mesh, _ctx.mats.palette, node)
+	Batch.nodes(plan.landmark_models, node, true)
 
 
 func _make_batch(node_name: String, bufs: Dictionary, range_end: float) -> void:

@@ -48,6 +48,19 @@ def split(pts):
     return out
 
 
+def _trees(trees):
+    """A tile's trees as packed arrays: `models` (names), and per tree its
+    model's index in `kind`, its foot `p`, `yaw` and scale `s`."""
+    models = sorted({t["m"] for t in trees})
+    return {
+        "models": models,
+        "kind": np.asarray([models.index(t["m"]) for t in trees], dtype=np.uint8),
+        "p": _pts([t["p"] for t in trees]) if trees else np.zeros((0, 3), np.float32),
+        "yaw": np.asarray([t["yaw"] for t in trees], dtype=np.float32),
+        "s": np.asarray([t["s"] for t in trees], dtype=np.float32),
+    }
+
+
 class Town:
     """Everything built, sorted into tiles as it's added."""
 
@@ -57,7 +70,7 @@ class Town:
         for i in range(int(math.floor(box.x0 / SIZE)), int(math.ceil(box.x1 / SIZE))):
             for j in range(int(math.floor(box.z0 / SIZE)), int(math.ceil(box.z1 / SIZE))):
                 self.tiles[(i, j)] = {"buildings": [], "lines": [], "flights": [], "bridges": [], "props": [],
-                                      "lanes": [], "water": {"verts": [], "tris": []}}
+                                      "trees": [], "landmarks": [], "lanes": [], "water": {"verts": [], "tris": []}}
 
     def _tile(self, x, z):
         return self.tiles.get(key(x, z))
@@ -75,13 +88,18 @@ class Town:
                 "paint": int(f["paint"]), "paint_top": float(f["paint_top"]), "eyes": int(f.get("eyes", 0)),
                 "quarter": int(f.get("quarter", 0)), "seed": int(f["seed"]),
             })
-        t["buildings"].append({
+        rec = {
             "id": b["id"], "rings": [np.asarray(r, dtype=np.float32) for r in b["rings"]], "tris": b["tris"],
             "y0": float(b["y0"]), "top": float(b["top"]), "storeys": int(b["storeys"]), "style": b["style"],
             "seed": int(b["seed"]), "paint": int(b["paint"]), "kind": b["kind"],
             "props": [{"m": p["m"], "p": _v3(p["p"]), "yaw": float(p["yaw"])} for p in b["props"]],
             "faces": faces,
-        })
+        }
+        if b.get("roof"):
+            r = b["roof"]
+            rec["roof"] = {"shape": r["shape"], "rise": float(r["rise"]), "verts": _pts(r["verts"]),
+                           "tris": np.asarray(r["tris"], dtype=np.int32), "walls": _pts(r["walls"])}
+        t["buildings"].append(rec)
 
     def add_line(self, line):
         for k, piece in split(line["pts"]):
@@ -118,6 +136,34 @@ class Town:
         t = self._tile(p["p"][0], p["p"][2])
         if t is not None:
             t["props"].append({"m": p["m"], "p": _v3(p["p"]), "yaw": float(p["yaw"])})
+
+    def add_landmark(self, lm):
+        at = lm.get("home", lm.get("p"))
+        t = self._tile(at[0], at[2])
+        if t is None:
+            return
+        rec = {}
+        for k, v in lm.items():
+            if k in ("p", "home"):
+                rec[k] = _v3(v)
+            elif k in ("field", "stadium", "verts", "walls"):
+                rec[k] = _pts(v)
+            elif k == "tris":
+                rec[k] = np.asarray(v, dtype=np.int32)
+            elif k == "rows":
+                rec[k] = [_pts(line) for line in v]
+            elif isinstance(v, bool):
+                rec[k] = v
+            elif isinstance(v, (int, float)):
+                rec[k] = float(v)
+            else:
+                rec[k] = v
+        t["landmarks"].append(rec)
+
+    def add_tree(self, tree):
+        t = self._tile(tree["p"][0], tree["p"][2])
+        if t is not None:
+            t["trees"].append(tree)
 
     def add_water(self, geom, level):
         """Sea or a lake (a Polygon or MultiPolygon), cut and triangulated
@@ -157,7 +203,8 @@ class Town:
                 "ground": cover.picture(x0, z0, SIZE),
                 "quarters": quarters.grid(x0, z0, SIZE, QUARTER_CELLS).ravel(),
                 "buildings": t["buildings"], "lines": t["lines"], "flights": t["flights"], "bridges": t["bridges"],
-                "props": t["props"], "lanes": t["lanes"],
+                "props": t["props"], "lanes": t["lanes"], "trees": _trees(t["trees"]),
+                "landmarks": t["landmarks"],
                 "water": {"verts": _pts(t["water"]["verts"]) if t["water"]["verts"] else np.zeros((0, 3), np.float32),
                           "tris": np.asarray(t["water"]["tris"], dtype=np.int32)},
             }

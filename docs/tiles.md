@@ -50,6 +50,8 @@ Each `.tile` is a gzipped Godot binary Variant (`var_to_bytes`): one Dictionary,
 | `props` | Array | `{m, p, yaw}`: a kit model (`street/street_lamp`) at a point; `Basis(Vector3.UP, yaw)` turns it, and its +z faces the street |
 | `lanes` | Array | Traffic lanes, one per direction on the town's side of the road: `{pts, kind, bridge}` in the direction of travel, 2 cm above the ground |
 | `water` | Dictionary | `{verts, tris}`: the sea and lakes cut to the tile, triangles wound anticlockwise seen from above |
+| `trees` | Dictionary | Trees measured from a lidar survey (none without one; the map's own trees are `props` then): `{models, kind, p, yaw, s}`, `models` the kit's tree models, `kind` a PackedByteArray index into them per tree, then each tree's foot, turn and scale (the models are 12, 18 and 6 m tall) |
+| `landmarks` | Array | See below |
 
 Lines, lanes and water are cut where they cross into the next tile (the pieces share the point where they meet); a building, flight, bridge or prop goes in the tile its middle is in.
 
@@ -64,6 +66,7 @@ Lines, lanes and water are cut where they cross into the next tile (the pieces s
 | `style` | The facade kit's style: `brick`, `plaster`, `modern` or `works` |
 | `seed`, `kind`, `paint` | Its seed (colours), its map kind (`yes`, `apartments`, `school`, ...) and the respect list's verdict (0 never, 1 the ground floor only, 2 all of it) |
 | `props` | Things on its roof: `{m, p, yaw}` |
+| `roof` | Only on a pitched roof measured from lidar: `{shape, rise, verts, tris, walls}`, `shape` `gable` or `hip`, `rise` its height over `top`, `verts` (PackedVector3Array) and `tris` its facets wound anticlockwise from above, and `walls` the gable ends under them as triangles. `tris` above is then the flat outline at `top` |
 | `faces` | Its walls that show, see below |
 
 A building's **faces** are the parts of its outline that face out, cut at most 12 m long, each a paintable wall:
@@ -80,7 +83,19 @@ A building's **faces** are the parts of its outline that face out, cut at most 1
 | `eyes` | 0 to 100: how much of the street sees it, which is what a tag there is worth |
 | `quarter`, `seed` | The quarter it's in and its own seed |
 
+With a lidar survey, `top` is the measured roof and `storeys` count back from it; a building whose parts stand at different heights is split into one record per part.
+
 The game lays the facade kit along each face (`Facade.lay`) and builds a plain shell set inside the outline for everything else and for far away. The roof is level with the cornice's top where the style has a parapet on it (`TilePlan.deck`), so a parapet is a hop high.
+
+### Landmarks
+
+Each is a Dictionary with a `kind` and `name`, in the tile its `home` or `p` is in (`cartographer/landmarks.py` finds them):
+
+| Kind | Keys |
+|---|---|
+| `water_tower`, `smokestack`, `statue`, `spire` | `m` (a model of the `landmark` set), `p` its foot, `yaw`, and `s` the scale from the model to its measured height |
+| `ballpark` | `home` (home plate, Vector3), `yaw` (towards centre field), `field` (the pitch's outline, PackedVector3Array), `big` (it gets lights), `stadium` (the stadium's outline, when the map has one), and from `SPECIAL` by Wikidata id: `wall` (the outfield wall's height), `wall_colour`, `monster` (`{side, height, colour}`: a tall wall in left or right field), `bull_sign`, `canopy` |
+| `stand` | A grandstand as rows of seats rising away from the pitch it faces: `p`, `height`, `verts` and `tris` (the rows' tops), `walls` (risers as triangles) and `rows` (each row's lip, an Array of PackedVector3Array: ledges) |
 
 ## Streaming
 

@@ -25,7 +25,7 @@ from shapely.geometry import LineString, Point, Polygon
 from shapely.geometry.polygon import orient
 from shapely.strtree import STRtree
 
-from . import respect
+from . import landmarks, respect
 from .geo import stable_id, stable_seed
 
 STOREY = 3.0
@@ -91,6 +91,8 @@ def footprints(map_data):
         kind = tags.get("building", "yes")
         if kind in SKIP_KINDS or tags.get("location") == "underground":
             continue
+        if landmarks.skip_building(tags):
+            continue  # a landmark the game draws
         if (_num(tags.get("min_height")) or 0.0) > 2.0:
             continue  # an overhang or a bridge between buildings
         for outer, inners in b["polys"]:
@@ -180,14 +182,42 @@ def rule_storeys(area, dense, rng):
     return rng.randint(lo, hi)
 
 
-def build(map_data, field, ways, proj, country="", places=None):
+def measured(feet, survey):
+    """Footprints as a lidar survey saw them: a footprint whose roof steps
+    becomes one footprint per part, each with its measured top and roof.
+    Returns [(poly, tags, part or None)]: None where the survey can't say
+    (built since, or hidden under trees), which keeps the rules."""
+    from . import lidar
+    out = []
+    for poly, tags in feet:
+        ground = float(np.min(survey.ground_at(*np.asarray(poly.exterior.coords).T)))
+        parts = lidar.measure(survey, poly, ground)
+        if not parts:
+            out.append((poly, tags, None))
+            continue
+        for part in parts:
+            g = part["poly"]
+            if len(parts) > 1:
+                g = g.buffer(0).simplify(SIMPLIFY, preserve_topology=True)
+                if g.geom_type != "Polygon" or g.area < MIN_AREA:
+                    continue
+                g = orient(g, -1.0)
+            out.append((g, tags, part))
+    return out
+
+
+def build(map_data, field, ways, proj, country="", places=None, survey=None):
     """Every building as a dict ready for its tile (see docs/tiles.md):
-    id, rings, tris, y0, top, storeys, style, seed, paint, kind, props and
-    faces. `ways` are network.ways(); `places` a respect.Places."""
+    id, rings, tris, y0, top, storeys, style, seed, paint, kind, props,
+    faces and, for a pitched roof, roof. `ways` are network.ways();
+    `places` a respect.Places; `survey` a lidar.Survey, whose measured
+    heights and roofs replace the rules wherever it saw a building."""
     places = places or respect.Places(map_data)
     feet = footprints(map_data)
     if not feet:
         return []
+    parts = measured(feet, survey) if survey is not None else [(p, t, None) for p, t in feet]
+    feet = [(p, t) for p, t, _ in parts]
     polys = [p for p, _ in feet]
     tree = STRtree(polys)
     zone_list = zones(map_data)
@@ -213,7 +243,10 @@ def build(map_data, field, ways, proj, country="", places=None):
         rng = random.Random(seed)
         kind = tags.get("building", "yes")
         tagged = None
-        if "building:levels" in tags and _num(tags["building:levels"]):
+        part = parts[k][2]
+        if part is not None:
+            tagged = max(1, int(round((part["top"] - float(field.at(c.x, c.y))) / STOREY)))
+        elif "building:levels" in tags and _num(tags["building:levels"]):
             tagged = max(1, int(round(_num(tags["building:levels"]) + (_num(tags.get("roof:levels")) or 0) * 0.5)))
         elif "height" in tags and _num(tags["height"]):
             tagged = max(1, int(round(_num(tags["height"]) / STOREY)))
@@ -225,7 +258,8 @@ def build(map_data, field, ways, proj, country="", places=None):
         else:
             storeys = tagged
         recs.append({"poly": poly, "tags": tags, "kind": kind, "id": bid, "seed": seed, "rng": rng,
-                     "storeys": min(storeys, 60), "tagged": tagged is not None})
+                     "storeys": min(storeys, 60), "tagged": tagged is not None,
+                     "measured": part["top"] if part else None, "roof": part["roof"] if part else None})
 
     # Untagged buildings lean towards their neighbours' heights, so a street
     # reads as a street.
@@ -244,7 +278,12 @@ def build(map_data, field, ways, proj, country="", places=None):
         lo, hi = float(hs.min()), float(hs.max())
         plinth = min(MAX_PLINTH, max(0, int(math.ceil((hi - lo - 0.6) / STOREY))))
         r["y0"] = lo
-        r["total"] = r["storeys"] + plinth
+        if r["measured"] is not None:
+            # Measured walls reach their own height above the low side.
+            r["total"] = min(60, max(1, int(round((r["measured"] - lo) / STOREY))))
+            r["storeys"] = r["total"]
+        else:
+            r["total"] = r["storeys"] + plinth
         r["top"] = lo + r["total"] * STOREY
         kind = r["kind"]
         if kind in WORKS_KINDS:
@@ -272,11 +311,19 @@ def build(map_data, field, ways, proj, country="", places=None):
             f["paint"] = r["paint"]
             f["paint_top"] = f["base"] + STOREY if r["paint"] == respect.GROUND else r["top"]
         rings, tris = _roof(r["poly"])
-        out.append({
+        rec = {
             "id": r["id"], "rings": rings, "tris": tris, "y0": r["y0"], "top": r["top"], "storeys": r["total"],
             "style": r["style"], "seed": r["seed"], "paint": r["paint"], "kind": r["kind"],
-            "props": _roof_props(r), "faces": faces, "poly": r["poly"],
-        })
+            "props": [] if r["roof"] else _roof_props(r), "faces": faces, "poly": r["poly"],
+            "measured": r["measured"] is not None,
+        }
+        if r["roof"]:
+            verts, tris, walls = pitched(r["poly"], r["top"], r["roof"])
+            if tris:
+                rec["roof"] = dict(r["roof"], verts=verts, tris=tris, walls=walls)
+            else:
+                rec["props"] = _roof_props(r)
+        out.append(rec)
     return out
 
 
@@ -499,3 +546,77 @@ def _roof_props(r):
             model = "facade/roof_vent"
         props.append({"m": model, "p": (x, r["top"], z), "yaw": yaw + (math.pi / 2) * rng.randint(0, 3)})
     return props
+
+
+def pitched(poly, top, roof):
+    """A pitched roof's mesh over a footprint: the facets of a gable or hip
+    roof over the footprint's oriented rectangle (ridge along
+    `roof["along"]`), cut to the outline. Returns (verts, tris, walls):
+    verts as (x, y, z) in town metres, tris three indices a triangle wound
+    anticlockwise seen from above, and walls a flat list of (x, y, z)
+    triangles closing the gap between the eaves at `top` and the roof (the
+    gable ends, and wherever the outline cuts into the rectangle)."""
+    a = float(roof["along"])
+    ua = (math.cos(a), math.sin(a))
+    va = (-ua[1], ua[0])
+    pts = np.asarray(poly.exterior.coords)[:-1]
+    us = pts[:, 0] * ua[0] + pts[:, 1] * ua[1]
+    vs = pts[:, 0] * va[0] + pts[:, 1] * va[1]
+    u0, u1, v0, v1 = float(us.min()), float(us.max()), float(vs.min()), float(vs.max())
+    uc, vc = (u0 + u1) * 0.5, (v0 + v1) * 0.5
+    half_l, half_w = (u1 - u0) * 0.5, (v1 - v0) * 0.5
+    rise = float(roof["rise"])
+    slope = rise / max(half_w, 0.5)
+
+    def world(u, v):
+        return (u * ua[0] + v * va[0], u * ua[1] + v * va[1])
+
+    # Each facet: its outline in (u, v) and the height of its plane there.
+    facets = [
+        ([(u0, v0), (u1, v0), (u1, vc), (u0, vc)], lambda u, v: (v - v0) * slope),
+        ([(u0, vc), (u1, vc), (u1, v1), (u0, v1)], lambda u, v: (v1 - v) * slope),
+    ]
+    if roof["shape"] == "hip" and half_l > half_w * 0.5:
+        inset = min(half_w, half_l)
+        r0, r1 = u0 + inset, u1 - inset
+        facets = [
+            ([(u0, v0), (u1, v0), (r1, vc), (r0, vc)], lambda u, v: (v - v0) * slope),
+            ([(r0, vc), (r1, vc), (u1, v1), (u0, v1)], lambda u, v: (v1 - v) * slope),
+            ([(u0, v0), (r0, vc), (u0, v1)], lambda u, v: (u - u0) * slope),
+            ([(u1, v0), (u1, v1), (r1, vc)], lambda u, v: (u1 - u) * slope),
+        ]
+    verts, tris, walls = [], [], []
+    for outline, height in facets:
+        face = Polygon([world(u, v) for u, v in outline]).buffer(0)
+        piece = poly.intersection(face).buffer(0)
+        for g in (piece.geoms if hasattr(piece, "geoms") else [piece]):
+            if g.geom_type != "Polygon" or g.area < 0.05:
+                continue
+
+            def h(x, z):
+                return top + max(0.0, height(x * ua[0] + z * ua[1], x * va[0] + z * va[1]))
+            try:
+                tri = shapely.constrained_delaunay_triangles(g)
+            except Exception:
+                continue
+            for t in getattr(tri, "geoms", []):
+                cs = list(t.exterior.coords)[:3]
+                (x0, z0), (x1, z1), (x2, z2) = cs
+                if (x1 - x0) * (z2 - z0) - (z1 - z0) * (x2 - x0) > 0:
+                    cs = [cs[0], cs[2], cs[1]]
+                base = len(verts)
+                for x, z in cs:
+                    verts.append((x, h(x, z), z))
+                tris += [base, base + 1, base + 2]
+            # Walls under the roof where this piece's edge is the outline.
+            ring = list(g.exterior.coords)
+            for (xa, za), (xb, zb) in zip(ring, ring[1:]):
+                mid = Point((xa + xb) * 0.5, (za + zb) * 0.5)
+                if poly.exterior.distance(mid) > 0.01:
+                    continue
+                ha, hb = h(xa, za), h(xb, zb)
+                if max(ha, hb) - top < 0.05:
+                    continue
+                quad = [(xa, top, za), (xb, top, zb), (xb, hb, zb), (xa, ha, za)]
+                walls += [quad[0], quad[1], quad[2], quad[0], quad[2], quad[3]]
+    return verts, tris, walls

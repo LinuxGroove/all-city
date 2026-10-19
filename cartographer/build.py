@@ -11,7 +11,7 @@ import numpy as np
 import shapely
 from shapely.geometry import Polygon
 
-from . import buildings, eyes, ground, lines, network, osm, props, quarters, respect, terrain, tiles, water
+from . import buildings, eyes, ground, landmarks, lidar, lines, network, osm, props, quarters, respect, terrain, tiles, water
 from .geo import Box, Projection, stable_seed
 
 ATTRIBUTION = "Map data © OpenStreetMap contributors, available under the Open Database License (ODbL)"
@@ -30,9 +30,14 @@ def log(*parts):
 
 
 def build_town(pbf, out_dir, town_id, name, lat, lon, radius=1600.0, country="", terrain_source="terrarium",
-               cache=None, data_date=None):
+               cache=None, data_date=None, lidar_mode="auto", lidar_cache=None):
     """Builds `name` around (lat, lon), `radius` metres each way, from the
-    extract at `pbf` into `out_dir`. Returns the manifest's stats."""
+    extract at `pbf` into `out_dir`. Returns the manifest's stats.
+
+    With `lidar_mode` "auto" the open lidar collections are searched for a
+    survey over the town (see lidar.py); where there is one, the ground,
+    every building it saw and the trees come from it. "off" keeps the
+    rules and the elevation tiles only."""
     t_start = time.time()
     times = {}
     proj = Projection(lat, lon)
@@ -47,7 +52,24 @@ def build_town(pbf, out_dir, town_id, name, lat, lon, radius=1600.0, country="",
     lap("read")
     log("read", len(m.buildings), "buildings,", len(m.lines), "lines,", len(m.areas), "areas")
 
-    if terrain_source == "flat":
+    survey = None
+    if lidar_mode != "off" and terrain_source != "flat":
+        try:
+            found = lidar.find(proj, box, cache=lidar_cache, log=log)
+            if found:
+                src = found[0][0]
+                survey = lidar.Survey(lidar.read(src, proj, box, cache=lidar_cache, log=log), box.grow(lidar.MARGIN),
+                                      source=src)
+            else:
+                log("no open lidar over the town: heights by rule")
+        except (OSError, ImportError, ValueError) as e:
+            log("no lidar (%s): heights by rule" % e)
+            survey = None
+    lap("lidar")
+
+    if survey is not None:
+        field = lidar.terrain(survey, terrain.CELL, terrain.flat(box, 0.0))
+    elif terrain_source == "flat":
         field = terrain.flat(box, 10.0)
     else:
         try:
@@ -81,7 +103,7 @@ def build_town(pbf, out_dir, town_id, name, lat, lon, radius=1600.0, country="",
     log(len(ws), "ways,", len(flight_list), "flights,", len(bridge_list), "bridges")
 
     places = respect.Places(m)
-    built = buildings.build(m, field, ws, proj, country=country, places=places)
+    built = buildings.build(m, field, ws, proj, country=country, places=places, survey=survey)
     lap("buildings")
     log(len(built), "buildings,", sum(len(b["faces"]) for b in built), "walls")
 
@@ -108,7 +130,12 @@ def build_town(pbf, out_dir, town_id, name, lat, lon, radius=1600.0, country="",
                 continue
             if not p.is_empty and p.area > 50:
                 green_areas.append((kind, p))
-    prop_list = props.place(m, ws, field, road, built, green_areas)
+    prop_list = props.place(m, ws, field, road, built, green_areas, trees=survey is None)
+    tree_list = []
+    if survey is not None:
+        blocked = shapely.union_all([b["poly"] for b in built] + ([road] if road is not None else []))
+        tree_list = [t for t in lidar.trees(survey, avoid=blocked) if box.contains(t["p"][0], t["p"][2])]
+        log(len(tree_list), "trees from the lidar")
     wire_lines, poles = lines.wires(m, field)
     prop_list += poles
     lap("props")
@@ -131,6 +158,16 @@ def build_town(pbf, out_dir, town_id, name, lat, lon, radius=1600.0, country="",
         town.add_bridge(b)
     for p in prop_list:
         town.add_prop(p)
+    landmark_list = landmarks.find(m, field, survey, built)
+    covered = shapely.union_all(landmarks.covers(landmark_list)) if landmark_list else None
+    if covered is not None and not covered.is_empty:
+        shapely.prepare(covered)
+        tree_list = [t for t in tree_list if not shapely.contains_xy(covered, t["p"][0], t["p"][2])]
+    for t in tree_list:
+        town.add_tree(t)
+    for lm in landmark_list:
+        town.add_landmark(lm)
+    log(len(landmark_list), "landmarks:", ", ".join(sorted({lm["kind"] for lm in landmark_list})))
     for lane in network.lanes(ws, "left" if country in LEFT_HAND else "right"):
         pts = lane["pts"]
         hs = np.atleast_1d(field.at(np.array([p[0] for p in pts]), np.array([p[1] for p in pts])))
@@ -150,10 +187,12 @@ def build_town(pbf, out_dir, town_id, name, lat, lon, radius=1600.0, country="",
         "utc_offset_min": UTC_OFFSET.get(country, int(round(lon / 15.0)) * 60),
         "origin": {"lat": lat, "lon": lon}, "box": box.as_list(),
         "data_date": data_date or m.newest, "built": datetime.date.today().isoformat(),
-        "attribution": [ATTRIBUTION, terrain.ATTRIBUTION], "spawn": spawn,
+        "attribution": [ATTRIBUTION, survey.source.attribution() if survey is not None else terrain.ATTRIBUTION],
+        "spawn": spawn,
         "stats": {"buildings": len(built), "walls": sum(len(b["faces"]) for b in built), "flights": len(flight_list),
                   "bridges": len(bridge_list), "lines": len(line_list), "props": len(prop_list),
-                  "quarters": len(qs.list)},
+                  "quarters": len(qs.list), "trees": len(tree_list), "landmarks": len(landmark_list),
+                  "measured": sum(1 for b in built if b.get("measured")) if survey is not None else 0},
     }
     total = town.write(out_dir, field, cover, qs, manifest)
     lap("write")

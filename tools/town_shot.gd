@@ -47,7 +47,10 @@ func _ready() -> void:
 		# Draw nothing while the rest streams in: software rendering is slow.
 		get_viewport().disable_3d = true
 		while not view.settled():
-			view.follow(where.p)
+			# Far from the middle the world moves back round the point.
+			var moved := view.follow(where.p)
+			where.p += moved
+			where.xf.origin += moved
 			await get_tree().process_frame
 		get_viewport().disable_3d = false
 		var all_ms := Time.get_ticks_msec() - t0

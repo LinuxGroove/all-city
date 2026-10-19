@@ -361,6 +361,7 @@ Ken VanDine
 [b]Maps[/b]
 Map data © OpenStreetMap contributors, available under the Open Database License: [url=%s]%s[/url]
 %s
+Heights, trees and the lie of the land come from open lidar surveys where there is one: the U.S. Geological Survey's 3D Elevation Program and NOAA's Digital Coast (public domain), each named on its town's card.
 Every town is built from a dated copy of the map. Shops show as what they are, never by their real names, and no house numbers appear.
 
 [b]Art[/b]

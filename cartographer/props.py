@@ -61,12 +61,14 @@ class Placer:
         return True
 
 
-def place(map_data, ways, field, road, built, areas_green):
+def place(map_data, ways, field, road, built, areas_green, trees=True):
+    """Every prop. With `trees` False the map's trees and the rules' trees
+    are left out (a lidar survey has placed the real ones)."""
     placer = Placer(road, built)
     # The map's own trees and lamps first.
     for p in map_data.points:
         t = p["tags"]
-        if t.get("natural") == "tree":
+        if t.get("natural") == "tree" and trees:
             placer.put("street/street_tree", p["x"], p["z"], stable_seed(p["x"], p["z"]) % 628 / 100.0, field, 1.5)
         elif t.get("highway") == "street_lamp":
             placer.put("street/street_lamp", p["x"], p["z"], 0.0, field, 2.0)
@@ -86,13 +88,13 @@ def place(map_data, ways, field, road, built, areas_green):
                    offset=BIN_EVERY * rng.random())
             _along(placer, field, line, w["width"] * 0.5 + 0.8, BIN_EVERY * 1.3, "street/bench", rng, 2.0,
                    offset=BIN_EVERY * rng.random(), facing="street")
-        if w["kind"] == "pedestrian" and line.length > 20.0:
+        if w["kind"] == "pedestrian" and line.length > 20.0 and trees:
             _along(placer, field, line, w["width"] * 0.5 - 0.8, 18.0, "street/street_tree", rng, 3.0,
                    alternate=True, offset=9.0)
         if w["kind"] == "service" and line.length > 15.0 and rng.random() < 0.35:
             _along(placer, field, line, w["width"] * 0.5 + 0.9, 60.0, "street/dumpster", rng, 2.5,
                    offset=line.length * rng.random(), facing="street")
-    for kind, poly in areas_green:
+    for kind, poly in (areas_green if trees else []):
         rng = random.Random(stable_seed("trees", round(poly.centroid.x), round(poly.centroid.y)))
         per = WOOD_TREE_AREA if kind == "wood" else PARK_TREE_AREA
         count = min(MAX_TREES_PER_AREA, int(poly.area / per))

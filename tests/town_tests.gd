@@ -38,6 +38,51 @@ func test_tile_plan(t) -> void:
 	t.check(near.build_ms < 2000.0, "a near tile works out in under two seconds (%.0f ms)" % near.build_ms)
 
 
+## Landmarks on a tile: a ballpark with its wall, poles, lights and
+## scoreboard, a grandstand's rows and a water tower, drawn at any distance
+## and solid with the detail.
+func test_landmarks(t) -> void:
+	var town := _town(t)
+	if town.is_empty():
+		return
+	var tile := TownTiles.load_tile(str(town.path), 0, -1)
+	var c := Vector3(float(tile.x0) + 128.0, 50.0, float(tile.z0) + 200.0)
+	var field := PackedVector3Array([c])
+	for k in 9:
+		var a := -PI / 4.0 + PI / 2.0 * k / 8.0
+		field.append(c + Vector3(sin(a), 0.0, -cos(a)) * 110.0)
+	var stand_verts := PackedVector3Array([c + Vector3(-10, 1, 10), c + Vector3(10, 1, 10), c + Vector3(10, 1, 12),
+			c + Vector3(-10, 1, 10), c + Vector3(10, 1, 12), c + Vector3(-10, 1, 12)])
+	tile.landmarks = [
+		{"kind": "ballpark", "name": "Test Park", "home": c, "yaw": PI, "field": field, "big": true, "wall": 2.4,
+				"monster": {"side": "left", "height": 9.8, "colour": "civic_blue"}, "bull_sign": true},
+		{"kind": "stand", "name": "", "p": c + Vector3(0, 0, 11), "height": 1.0, "verts": stand_verts,
+				"tris": PackedInt32Array([0, 1, 2, 3, 4, 5]), "walls": PackedVector3Array(),
+				"rows": [PackedVector3Array([c + Vector3(-10, 1, 10), c + Vector3(10, 1, 10)])]},
+		{"kind": "water_tower", "m": "landmark/water_tower", "name": "", "p": c + Vector3(40, 0, 40), "yaw": 0.0,
+				"s": 1.5},
+	]
+	var ctx := TownView.context(1)
+	var far := TilePlan.make(tile, false, ctx)
+	t.check(not far.landmark_mesh.is_empty(), "a far tile draws its landmarks")
+	for m in ["landmark/foul_pole", "landmark/light_tower", "landmark/scoreboard", "landmark/bull_sign",
+			"landmark/water_tower"]:
+		t.check(far.landmark_models.has(m), "the ballpark and tower place %s" % m)
+		t.check(Kit.mesh(m) != null, "%s is in the kit" % m)
+	t.check(int(far.landmark_models["landmark/foul_pole"][1]) == 2, "two foul poles")
+	var plain := TilePlan.make(TownTiles.load_tile(str(town.path), 0, -1), true, ctx)
+	var near := TilePlan.make(tile, true, ctx)
+	t.check(near.solid_faces.size() > plain.solid_faces.size(), "the wall and the stand are solid")
+	t.check(near.shapes.size() >= plain.shapes.size() + 8, "light towers and the tower's legs are in the way")
+	var walls := 0
+	var ledges := 0
+	for item in near.grind_lines:
+		walls += 1 if item[0] == Lines.Kind.WALL else 0
+		ledges += 1 if item[0] == Lines.Kind.LEDGE else 0
+	t.check(walls >= 2, "the outfield wall and the Monster are grind lines")
+	t.check(ledges >= 1, "the stand's rows are ledges")
+
+
 func test_town_streams(t) -> void:
 	var town := _town(t)
 	if town.is_empty():

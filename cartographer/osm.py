@@ -13,10 +13,11 @@ from .geo import Box, Projection
 
 BUILDING_TAGS = ("building", "building:levels", "height", "min_height", "roof:shape", "roof:levels",
                  "building:material", "building:colour", "amenity", "shop", "religion", "name", "layer",
-                 "location", "man_made", "tourism", "historic", "office", "leisure")
+                 "location", "man_made", "tourism", "historic", "office", "leisure", "wikidata", "sport",
+                 "tower:type")
 AREA_TAGS = ("landuse", "leisure", "natural", "amenity", "man_made", "water", "waterway", "highway", "area",
              "area:highway", "place", "military", "sport", "surface", "name", "railway", "historic",
-             "social_facility", "parking", "layer", "tunnel", "bridge")
+             "social_facility", "parking", "layer", "tunnel", "bridge", "wikidata", "tourism")
 LINE_TAGS = ("highway", "name", "bridge", "tunnel", "layer", "width", "lanes", "oneway", "handrail",
              "handrail:left", "handrail:right", "handrail:center", "incline", "step_count", "barrier",
              "height", "railway", "service", "usage", "power", "voltage", "waterway", "natural",
@@ -24,7 +25,7 @@ LINE_TAGS = ("highway", "name", "bridge", "tunnel", "layer", "width", "lanes", "
              "cables", "wires", "material", "wall")
 POINT_TAGS = ("amenity", "shop", "place", "name", "natural", "power", "man_made", "advertising", "highway",
               "leisure", "tourism", "historic", "religion", "height", "tower:type", "barrier", "craft",
-              "office", "social_facility", "healthcare")
+              "office", "social_facility", "healthcare", "wikidata", "artwork_type")
 # Points worth keeping; everything else (crossings, bus stops...) isn't used.
 POINT_KEYS = ("amenity", "shop", "place", "power", "man_made", "advertising", "leisure", "tourism",
               "historic", "craft", "office", "healthcare")

@@ -45,6 +45,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install the Cartographer's packages
-        run: python3 -m pip install osmium shapely numpy pillow
+        run: python3 -m pip install -r cartographer/requirements.txt
       - name: Run the Cartographer's tests
         run: python3 -m unittest discover -s cartographer/tests -t .

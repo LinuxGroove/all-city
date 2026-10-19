@@ -105,8 +105,10 @@ static func lay(batch: Batch, a: Vector3, b: Vector3, storeys: int, rec: Diction
 		escape_bay = int(rec.escape_bay) if int(rec.escape_bay) < bays else -1
 	if rec.has("pipe_at"):
 		pipe_at = int(rec.pipe_at) if int(rec.pipe_at) < bays else -1
+	# A pitched roof's walls end at the eaves: the recipe's "top" says so.
+	var top_pieces: Array = rec.get("top", style.top)
 	var crest := top_y
-	for piece in style.top:
+	for piece in top_pieces:
 		crest += 0.6 if piece == "cornice" else 0.95
 	for i in bays:
 		var mid := a + d * (bw * (i + 0.5))
@@ -128,7 +130,7 @@ static func lay(batch: Batch, a: Vector3, b: Vector3, storeys: int, rec: Diction
 			batch.add("facade/sign_box", Transform3D(basis, mid - d * (bw * 0.5 - 0.15) + Vector3.UP * 3.4))
 		# The top.
 		var y := top_y
-		for piece in style.top:
+		for piece in top_pieces:
 			batch.add("facade/" + piece, Transform3D(basis.scaled_local(Vector3(sx, 1, 1)), Vector3(mid.x, y, mid.z)),
 					wall)
 			y += 0.6 if piece == "cornice" else 0.95

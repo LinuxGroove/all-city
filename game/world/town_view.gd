@@ -23,7 +23,7 @@ const FAR := 3
 ## How far the player may get from the scene's origin before the world is
 ## moved back round them.
 const RECENTRE := 384.0
-const SETS := ["facade", "street", "stairs", "vehicles"]
+const SETS := ["facade", "street", "stairs", "vehicles", "landmark"]
 
 var town := {}
 var folder := ""
