@@ -721,6 +721,101 @@ func test_camera_level(t) -> void:
 	_free(y)
 
 
+## Turning with the keys, the camera stays right behind: it's never far off
+## the way the skater faces, and catches up within half a second of letting go.
+func test_camera_follows_turns(t) -> void:
+	var y: Array = await _yard(t)
+	var s: Skater = y[1]
+	var cam := StreetCamera.new()
+	cam.target = s
+	cam.interpolated = false
+	(y[0] as Node3D).add_child(cam)
+	cam.set_process(false)
+	s.place(Vector3(-60, 0.0, 1.5), Vector3.RIGHT)
+	_drive(s, 5, _nothing)
+	cam.snap()
+	var worst := 0.0
+	var settle := 0.0
+	Input.action_press("move_forward")
+	for i in 240:
+		if i == 90:
+			Input.action_press("move_right")
+		if i == 150:
+			Input.action_release("move_right")
+		s.input.from_actions(Basis.IDENTITY, s.heading, true, DT)
+		s.step(DT)
+		cam.update(DT, Vector2.ZERO)
+		var lag := rad_to_deg(absf(wrapf(cam._behind() - cam.yaw, -PI, PI)))
+		if i >= 90 and i < 150:
+			worst = maxf(worst, lag)
+		if i == 180:
+			settle = lag
+	Input.action_release("move_forward")
+	t.check(worst < 50.0, "a second's turn never leaves the camera far behind (%.0f°)" % worst)
+	t.check(settle < 6.0, "and it's behind again half a second later (%.0f°)" % settle)
+	# Standing still, turning on the spot swings it round too.
+	s.place(Vector3(-60, 0.0, 1.5), Vector3.RIGHT)
+	_drive(s, 5, _nothing)
+	cam.snap()
+	Input.action_press("move_left")
+	for i in 60:
+		s.input.from_actions(Basis.IDENTITY, s.heading, true, DT)
+		s.step(DT)
+		cam.update(DT, Vector2.ZERO)
+	Input.action_release("move_left")
+	for i in 30:
+		s.input.from_actions(Basis.IDENTITY, s.heading, true, DT)
+		s.step(DT)
+		cam.update(DT, Vector2.ZERO)
+	var behind := rad_to_deg(absf(wrapf(cam._behind() - cam.yaw, -PI, PI)))
+	t.check(rad_to_deg(Vector3.RIGHT.angle_to(s.heading)) > 60.0 and behind < 8.0,
+			"the camera turns with a skater turning on the spot (%.0f°)" % behind)
+	_free(y)
+
+
+## With a wall close behind, the camera climbs to look down over it rather
+## than closing in on the skater.
+func test_camera_lifts_over_walls(t) -> void:
+	var y: Array = await _yard(t)
+	var s: Skater = y[1]
+	var cam := StreetCamera.new()
+	cam.target = s
+	cam.interpolated = false
+	(y[0] as Node3D).add_child(cam)
+	cam.set_process(false)
+	var at := Vector3(-60, 0.0, 1.5)
+	s.place(at, Vector3.RIGHT)
+	_drive(s, 5, _nothing)
+	var wall := StaticBody3D.new()
+	wall.collision_layer = Kit.LAYER_WORLD
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(0.5, 3.0, 12.0)
+	shape.shape = box
+	wall.add_child(shape)
+	# Two metres behind the skater, a room's height.
+	wall.position = at + Vector3(-2.2, 1.5, 0.0)
+	(y[0] as Node3D).add_child(wall)
+	await t.get_tree().physics_frame
+	await t.get_tree().physics_frame
+	cam.snap()
+	for i in 90:
+		cam.update(DT, Vector2.ZERO)
+	var look := s.global_position + Vector3.UP * StreetCamera.LOOK_HEIGHT
+	var gap := cam.global_position.distance_to(look)
+	t.check(cam._clear > deg_to_rad(10.0), "the camera climbs (%.0f° extra)" % rad_to_deg(cam._clear))
+	t.check(gap > 3.5, "and keeps its distance (%.1f m)" % gap)
+	t.check(cam.global_position.x > at.x - 2.0 - 0.01 or cam.global_position.y > 3.2, "never inside the wall")
+	# Out in the open again it comes back down.
+	wall.queue_free()
+	await t.get_tree().physics_frame
+	await t.get_tree().physics_frame
+	for i in 240:
+		cam.update(DT, Vector2.ZERO)
+	t.check(cam._clear < deg_to_rad(1.0), "and settles back down when the way is clear")
+	_free(y)
+
+
 ## Records the camera's roll, whether it's inside a building, and whether
 ## a wall hides the skater.
 func _level(cam: StreetCamera, s: Skater, w: Dictionary, worst: Array) -> void:
@@ -748,6 +843,17 @@ func test_body(t) -> void:
 	_drive(s, 60, _push_east)
 	t.check(absf(s.body.global_basis.z.normalized().dot(Vector3.RIGHT) - 1.0) < 0.05, "the body faces the way it rolls")
 	t.check(absf(s.body.global_basis.x.y) < 0.01, "and stands up straight going straight")
+	# Turned with the keys, it turns too: on the move and on the spot.
+	_keys(s, 45, ["move_forward", "move_right"])
+	_keys(s, 20, ["move_forward"])
+	t.check(s.facing.dot(s.heading) > 0.999, "the body follows the heading round a turn")
+	t.check(s.body.global_basis.z.normalized().dot(s.heading) > 0.95, "and is seen facing it (%.2f)" % s.body.global_basis.z.normalized().dot(s.heading))
+	s.place(Vector3(-40, 0.0, 1.5), Vector3.RIGHT)
+	_drive(s, 5, _nothing)
+	_keys(s, 40, ["move_left"])
+	_keys(s, 20, [])
+	t.check(s.heading.dot(Vector3.RIGHT) < 0.5 and s.body.global_basis.z.normalized().dot(s.heading) > 0.95,
+			"standing still, it turns on the spot too")
 	_free(y)
 
 

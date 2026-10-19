@@ -271,6 +271,10 @@ func _paint() -> void:
 	sk.place(Vector3(mid.x, float(best.base) + 0.3, mid.z) + out * 0.8 - along.normalized() * 0.3, -out)
 	play.cam.snap()
 	await _ticks(40)
+	# The facade's relief can push a writer off their mark as they land; turn
+	# back to the wall, as a player would.
+	sk.place(sk.global_position, -out)
+	await _ticks(5)
 	var action: PaintAction = play.action
 	var t0 := Time.get_ticks_msec()
 	var mid_shot := false

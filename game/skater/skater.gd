@@ -191,7 +191,8 @@ var state := State.SKATE
 var speed := 0.0
 ## The way the skater rolls, flat and unit length.
 var heading := Vector3.FORWARD
-## The way the body faces, flat and unit length.
+## The way the body faces, flat and unit length. Skating and flying it
+## follows `heading`; grinding, wall riding, climbing and painting set it.
 var facing := Vector3.FORWARD
 var flow := 0.0
 ## Moves chained without touching flat ground.
@@ -457,6 +458,10 @@ func step(dt: float) -> void:
 			_climb(dt)
 		State.PAINT, State.PICKED_UP:
 			velocity = Vector3.ZERO
+	if state == State.SKATE or state == State.AIR:
+		# The body faces the way it rolls; a grind, wall ride, climb or tag
+		# turns it its own way.
+		facing = heading
 	_tricks(dt)
 	_flow(dt)
 	if global_position.y < KILL_Y:

@@ -6,10 +6,13 @@ extends Camera3D
 ## punches its zoom or cuts.
 ##
 ## It swings round behind the way you're going at the camera/follow setting
-## (0 never, 1 quickly). The right stick and the mouse only nudge it: let
-## go and it eases back behind you. With follow at 0 the stick turns it for
-## good instead, since nothing else would. Something between the camera and
-## the skater pulls it in gently, never through the wall.
+## (0 never, 1 quickly). When the keys steer the skater (left and right
+## turn them), it keeps right behind them, even standing still, so what's
+## ahead of the skater is always ahead on the screen. The right stick and
+## the mouse only nudge it: let go and it eases back behind you. With
+## follow at 0 the stick turns it for good instead, since nothing else
+## would. Something between the camera and the skater lifts it up and over
+## the way, or pulls it in gently, never through the wall.
 
 const LOOK_HEIGHT := 1.35
 const DISTANCE := 5.6
@@ -43,6 +46,22 @@ const MIN_DISTANCE := 1.2
 const CAST_RADIUS := 0.25
 ## The fastest it ever swings round, in radians a second.
 const MAX_SWING := 1.6
+## Following a skater the keys steer: how quickly it catches up (a second's
+## fraction, from follow 0 to 1) and the fastest it swings, a little more
+## than the skater turns, so a turn is never out of sight.
+const CHASE_RATE_MIN := 2.5
+const CHASE_RATE_MAX := 8.0
+const CHASE_SWING := 4.2
+## Easing of the picture itself onto the swung heading while chasing.
+const CHASE_YAW_RATE := 10.0
+## When something's in the way behind, it climbs this much further (at most)
+## to look down over it before it pulls in.
+const CLEAR_PITCH_STEP := deg_to_rad(9.0)
+const CLEAR_PITCH_STEPS := 5
+const CLEAR_IN := 5.0
+const CLEAR_OUT := 1.3
+## How much of the way back must be open to call it clear.
+const CLEAR_ENOUGH := 0.85
 
 var target: Skater
 ## Where the camera is (radians and metres from the focus), easing towards
@@ -63,6 +82,7 @@ var interpolated := true
 var stick_override := Vector2.INF
 
 var _pull := 0.0
+var _clear := 0.0
 var _focus_y := 0.0
 var _lead := Vector3.ZERO
 var _idle := 0.0
@@ -106,6 +126,7 @@ func snap() -> void:
 	nudge = Vector2.ZERO
 	_lead = Vector3.ZERO
 	_pull = 0.0
+	_clear = 0.0
 	_back = 0.0
 	var at := _target_origin()
 	focus = at
@@ -157,9 +178,15 @@ func update(delta: float, stick: Vector2) -> void:
 		_idle += delta
 		if _idle > NUDGE_HOLD and follow > 0.001:
 			nudge = nudge.lerp(Vector2.ZERO, 1.0 - exp(-(0.8 + 2.0 * follow) * delta))
-	# Swing round behind the skater's way, lazily, and only when moving.
+	# Swing round behind the skater's way. When the keys steer the skater the
+	# camera keeps right behind them, standing or rolling; otherwise it
+	# follows lazily, and only when moving.
 	var travel := _travel()
-	if follow > 0.001 and travel.length() > 1.5:
+	var chasing := _chasing()
+	if chasing:
+		var diff := wrapf(_behind() - base_yaw, -PI, PI)
+		base_yaw += _swing(diff, lerpf(CHASE_RATE_MIN, CHASE_RATE_MAX, follow), delta, CHASE_SWING)
+	elif follow > 0.001 and travel.length() > 1.5:
 		var diff := wrapf(_behind() - base_yaw, -PI, PI)
 		var pace := clampf(travel.length() / Skater.PUSH_TOP, 0.3, 1.0)
 		base_yaw += _swing(diff, FOLLOW_RATE * follow * pace, delta)
@@ -170,7 +197,8 @@ func update(delta: float, stick: Vector2) -> void:
 	_back = move_toward(_back, want_back, delta * 1.6)
 	var k := 1.0 - exp(-BLEND_RATE * delta)
 	var want_yaw := base_yaw + nudge.x + PI * smoothstep(0.0, 1.0, _back)
-	yaw = lerp_angle(yaw, want_yaw, minf(k * 1.6, 1.0))
+	var yaw_k := 1.0 - exp(-CHASE_YAW_RATE * delta) if chasing else minf(k * 1.6, 1.0)
+	yaw = lerp_angle(yaw, want_yaw, yaw_k)
 	var want_pitch := (CLIMB_PITCH if target.state == Skater.State.CLIMB else PITCH) + nudge.y
 	pitch = lerpf(pitch, clampf(want_pitch, PITCH_MIN, PITCH_MAX), k)
 	distance = lerpf(distance, DISTANCE, k)
@@ -178,10 +206,18 @@ func update(delta: float, stick: Vector2) -> void:
 	_place(delta)
 
 
-## A step of an eased turn through `diff`, never faster than MAX_SWING.
-static func _swing(diff: float, rate: float, delta: float) -> float:
+## A step of an eased turn through `diff`, never faster than `limit`.
+static func _swing(diff: float, rate: float, delta: float, limit := MAX_SWING) -> float:
 	var step := diff * (1.0 - exp(-rate * delta))
-	return clampf(step, -MAX_SWING * delta, MAX_SWING * delta)
+	return clampf(step, -limit * delta, limit * delta)
+
+
+## Whether the camera keeps right behind the skater: the keys steer them
+## (they turn on the spot and roll the way they face), they're on their feet
+## or in the air, and follow isn't off.
+func _chasing() -> bool:
+	return follow > 0.001 and target.input.relative \
+			and (target.state == Skater.State.SKATE or target.state == Skater.State.AIR)
 
 
 ## The skater's way of travel on the ground.
@@ -225,7 +261,14 @@ func _follow_focus(delta: float) -> void:
 
 func _place(delta: float) -> void:
 	var look := focus + Vector3.UP * LOOK_HEIGHT
-	var dir := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))
+	# Something behind the skater: climb to look down over it first.
+	var want_clear := _clear_pitch(look)
+	if delta > 0.0:
+		var rate_c := CLEAR_IN if want_clear > _clear else CLEAR_OUT
+		_clear = lerpf(_clear, want_clear, 1.0 - exp(-rate_c * delta))
+	else:
+		_clear = want_clear
+	var dir := _direction(minf(pitch + _clear, PITCH_MAX))
 	var free := _free_distance(look, dir, distance + LOOKAHEAD)
 	var want_pull := distance - clampf(free - LOOKAHEAD, MIN_DISTANCE, distance)
 	# In smoothly, and back out more smoothly still; but never past a wall.
@@ -238,6 +281,30 @@ func _place(delta: float) -> void:
 	global_position = look + dir * d
 	if not global_position.is_equal_approx(look):
 		look_at(look, Vector3.UP)
+
+
+## From the focus towards the camera, for a pitch above the horizon.
+func _direction(p: float) -> Vector3:
+	return Vector3(sin(yaw) * cos(p), sin(p), cos(yaw) * cos(p))
+
+
+## The least extra pitch (in steps) at which the way back to the camera is
+## clear, or the clearest there is.
+func _clear_pitch(look: Vector3) -> float:
+	var reach := distance + LOOKAHEAD
+	var best := 0.0
+	var best_free := -1.0
+	for i in CLEAR_PITCH_STEPS + 1:
+		var extra := CLEAR_PITCH_STEP * i
+		if pitch + extra > PITCH_MAX:
+			break
+		var free := _free_distance(look, _direction(pitch + extra), reach)
+		if free >= reach * CLEAR_ENOUGH:
+			return extra
+		if free > best_free + 0.05:
+			best_free = free
+			best = extra
+	return best
 
 
 ## How far a small sphere can go from `from` along `dir`, up to `dist`,
