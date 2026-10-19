@@ -1,6 +1,6 @@
 class_name Person
 extends Node3D
-## A person in town: a writer on skates, one of the Buff's crew, a Civic
+## A person in town: a writer with a skateboard, one of the Buff's crew, a Civic
 ## officer or a passer-by. A Universal Base Character dressed by
 ## [code]person.gdshader[/code] and animated with the Universal Animation
 ## Libraries. Clothes are drawn on the rest pose, so one shader dresses
@@ -30,6 +30,8 @@ const WARDROBE := {
 	"streetwear": {
 		"Hoodie": ["main", 0], "Hood": ["main", 0], "Rib": ["main", 1], "Strings": ["accent", 2],
 		"Trousers": ["legs", 0], "Metal": [Color("a7a9b3"), 2],
+		"Shoes": [Color("221f2b"), 0], "Soles": [Color("f4efe6"), 1], "Laces": [Color("f4efe6"), 2],
+		"Pack": ["accent", 0], "Straps": [Color("221f2b"), 0], "Loops": [Color("221f2b"), 1],
 	},
 }
 ## Hoodie and T-shirt colours writers and passers-by come in.
@@ -49,8 +51,19 @@ const LOOPS := ["Idle", "Jump", "Sprint", "Jog_Fwd", "Walk", "Crouch_Idle", "Cro
 ## Bones that make up each region, for the shader.
 const HEAD_BONES := ["Head", "neck_01"]
 const FOOT_BONES := ["foot_l", "foot_r", "ball_l", "ball_r", "ball_leaf_l", "ball_leaf_r"]
-## How far the skates lift a writer: the boot's sole above the wheels' bottom.
-const SKATE_LIFT := 0.09
+## How far shoes lift a dressed writer: their soles reach this far under the
+## bare foot (tools/blender/wardrobe.py's SOLE).
+const SOLE := 0.016
+## The skateboard's deck: the top of its grip above the bottom of the wheels
+## (tools/blender/gear.py), and where the board lies under a regular stance in
+## this person's space: nose to the left (+x), so the left foot leads.
+const DECK_TOP := 0.108
+const STANCE := Transform3D(Basis(Vector3.FORWARD, Vector3.UP, Vector3.RIGHT), Vector3(0.045, 0.0, 0.0))
+## Painting, the board stands on its tail at the person's left, held by
+## the nose (in the person's space): nose up, the grip towards the leg, leaning
+## in to it by 8°.
+const HELD := Transform3D(Basis(Vector3(0, 0, -1), Vector3(-0.990268, -0.139173, 0), Vector3(-0.139173, 0.990268, 0)),
+		Vector3(0.40, 0.41, 0.06))
 
 static var _libs := {}
 static var _baked := {}
@@ -64,15 +77,20 @@ var model: Node3D
 var skeleton: Skeleton3D
 var anim: AnimationPlayer
 var meshes: Array[MeshInstance3D] = []
-var skates := false
+## A writer's skateboard (gear/skateboard, a child of this person unless it's
+## on the backpack) and the rig that stands them on it; null for everyone else.
+var board: MeshInstance3D
+var rig: BoardRig
 ## The outfit this person wears ("" when the shader paints one on).
 var outfit := ""
 var _current := ""
+var _slot: Node3D
 
 
 ## A person. `look` can set "skin", "hair" and "style" (indexes) and "main",
 ## "accent" and "legs" colours; anything missing comes from `seed`. Writers
-## wear skates unless `look.skates` is false.
+## have a skateboard (its graphic in `look.deck`, or the accent) unless
+## `look.board` is false.
 static func make(p_role := "writer", p_female := false, seed := 0, look := {}) -> Person:
 	var c := Person.new()
 	c.name = "Person"
@@ -118,14 +136,16 @@ func _build(seed: int, look: Dictionary) -> void:
 	_add_hair(str(styles[style_i]), HAIR_COLORS[hair_i])
 	if not female and r.randf() < 0.3 and role != "civic":
 		_add_hair("Hair_Beard", HAIR_COLORS[hair_i])
-	if role == "writer" and bool(look.get("skates", true)):
-		_add_skates(look.get("wheels", Color("c6f03c")))
+	if model.find_child("Shoes", true, false):
+		model.position.y = SOLE
 	anim = AnimationPlayer.new()
 	anim.name = "Anim"
 	model.add_child(anim)
 	anim.add_animation_library("ual1", _lib(UAL1))
 	anim.add_animation_library("ual2", _lib(UAL2))
 	anim.playback_default_blend_time = 0.15
+	if role == "writer" and bool(look.get("board", true)):
+		_add_board(look.get("deck", j.accent))
 
 
 ## Hair is made in the rest pose's space, so it rides the head bone offset
@@ -149,24 +169,117 @@ func _add_hair(style: String, color: Color) -> void:
 		(mi as MeshInstance3D).material_override = _hair_mats[color.to_html()]
 
 
-## A skate on each foot, placed in the rest pose under the foot and carried
-## by the foot bone. The body stands SKATE_LIFT higher on them.
-func _add_skates(wheels: Color) -> void:
-	skates = true
-	for side in ["l", "r"]:
-		var bone := skeleton.find_bone("foot_" + side)
-		if bone < 0:
-			continue
-		var rest_foot := skeleton.get_bone_global_rest(bone)
-		var at := BoneAttachment3D.new()
-		at.bone_name = "foot_" + side
-		skeleton.add_child(at)
-		var skate := Kit.instance("gear/inline_skate")
-		skate.set_instance_shader_parameter("tint", wheels)
-		var place := Transform3D(Basis.IDENTITY, Vector3(rest_foot.origin.x, -SKATE_LIFT + 0.005, 0.0))
-		skate.transform = rest_foot.affine_inverse() * place
-		at.add_child(skate)
-	model.position.y = SKATE_LIFT
+## The skateboard, its graphic in `deck`, standing under the feet in a
+## regular stance, with the BoardRig that puts the feet on it, and the slot
+## on the backpack that carries it.
+func _add_board(deck: Color) -> void:
+	board = Kit.instance("gear/skateboard", deck)
+	board.name = "Board"
+	board.transform = STANCE
+	add_child(board)
+	rig = BoardRig.new()
+	rig.name = "BoardRig"
+	rig.board = board
+	rig.sole = model.position.y
+	rig.frame = self
+	rig.stand = STANCE
+	skeleton.add_child(rig)
+	var spine := skeleton.find_bone("spine_03")
+	if spine < 0:
+		return
+	var at := BoneAttachment3D.new()
+	at.name = "PackAt"
+	at.bone_name = "spine_03"
+	skeleton.add_child(at)
+	_slot = Node3D.new()
+	_slot.name = "BoardSlot"
+	at.add_child(_slot)
+	# On the pack's back, behind the loops: nose up, the grip against the
+	# pack and the wheels out (in the rest pose, the back is towards -z).
+	var loops := model.find_child("Loops", true, false) as MeshInstance3D
+	var pack := model.find_child("Pack", true, false) as MeshInstance3D
+	var behind := -0.3
+	var mid := 1.15
+	if loops and pack:
+		var box := loops.get_aabb()
+		behind = box.position.z
+		mid = pack.get_aabb().get_center().y - 0.03
+	var on_back := Transform3D(Basis(Vector3.LEFT, Vector3.BACK, Vector3.UP), Vector3(0.0, mid, behind - DECK_TOP))
+	_slot.transform = skeleton.get_bone_global_rest(spine).affine_inverse() * on_back
+
+
+## Where the board is when it's on the backpack, in this person's space (the
+## slot rides the spine, so this follows the body's pose).
+func pack_place() -> Transform3D:
+	if _slot == null or not _slot.is_inside_tree():
+		return STANCE
+	return global_transform.affine_inverse() * _slot.global_transform
+
+
+## Hangs the board on the backpack (or takes it back to carry about),
+## keeping where it is in the world, for the skater to ease it home.
+func carry_on_back(on: bool) -> void:
+	if board == null or _slot == null or (board.get_parent() == _slot) == on:
+		return
+	var inside := board.is_inside_tree()
+	var was := board.global_transform if inside else Transform3D.IDENTITY
+	board.get_parent().remove_child(board)
+	(_slot if on else self as Node).add_child(board)
+	if inside and board.is_inside_tree():
+		board.global_transform = was
+	else:
+		board.transform = Transform3D.IDENTITY if on else STANCE
+	board.reset_physics_interpolation()
+
+
+func board_on_back() -> bool:
+	return board != null and _slot != null and board.get_parent() == _slot
+
+
+## Raises the body (standing on the deck, Person.DECK_TOP) over its shoes.
+func lift(by: float) -> void:
+	model.position.y = (SOLE if rig and rig.sole > 0.0 else 0.0) + by
+
+
+## For still pictures (the title's backdrop, art previews): a writer on the
+## board in a 50-50 down a line going `along`, the board tipped to its slope.
+## Stand the person on the line, Skater.GRIND_DROP below it.
+func grind_still(along: Vector3) -> void:
+	if board == null:
+		return
+	var flat := Vector3(along.x, 0.0, along.z).normalized()
+	rotation.y = atan2(-flat.z, flat.x)
+	var slope := asin(clampf(-along.normalized().y, -1.0, 1.0))
+	board.transform = STANCE * Transform3D(Basis(Vector3.RIGHT, slope), Vector3.ZERO)
+	rig.stand = board.transform
+	rig.crouch = 0.04
+	rig.arms_out = 0.9
+	rig.twist = deg_to_rad(60.0)
+	lift(DECK_TOP)
+
+
+## For still pictures: the board held up by its nose, as when painting.
+func hold_board_still() -> void:
+	if board == null:
+		return
+	board.transform = HELD
+	rig.front_on = 0.0
+	rig.back_on = 0.0
+	rig.hand_on = 1.0
+	rig.crouch = 0.0
+	rig.twist = 0.0
+	rig.arms_out = 0.0
+	lift(0.0)
+
+
+## For still pictures: the board on the backpack, standing on the ground.
+func board_on_pack_still() -> void:
+	if board == null:
+		return
+	rig.active = false
+	carry_on_back(true)
+	board.transform = Transform3D.IDENTITY
+	lift(0.0)
 
 
 ## A spray can in the right hand, its body the paint's colour.

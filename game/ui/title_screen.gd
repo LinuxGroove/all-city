@@ -365,7 +365,7 @@ Every town is built from a dated copy of the map. Shops show as what they are, n
 
 [b]Art[/b]
 The writers are Quaternius' Universal Base Characters, moving with the Universal Animation Library (quaternius.com), CC0. Thank you, Quaternius!
-The streets, buildings, stairs, vehicles, skates and cans were modelled in Blender for All City.
+The streets, buildings, stairs, vehicles, skateboards and cans were modelled in Blender for All City.
 Button prompts, menu sounds and the shared add-on's fonts by Kenney (kenney.nl), CC0. Thank you, Kenney!
 
 [b]Fonts[/b]

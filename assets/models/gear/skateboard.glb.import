@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://dgphxnnq46g5c"
-path="res://.godot/imported/inline_skate.glb-5c8e16c693cda4294c32a434d670e6c5.scn"
+uid="uid://di8dinjho8om0"
+path="res://.godot/imported/skateboard.glb-5f00f0ed071b901b30f98b5aaaf986cd.scn"
 
 [deps]
 
-source_file="res://assets/models/gear/inline_skate.glb"
-dest_files=["res://.godot/imported/inline_skate.glb-5c8e16c693cda4294c32a434d670e6c5.scn"]
+source_file="res://assets/models/gear/skateboard.glb"
+dest_files=["res://.godot/imported/skateboard.glb-5f00f0ed071b901b30f98b5aaaf986cd.scn"]
 
 [params]
 

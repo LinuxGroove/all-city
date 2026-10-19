@@ -2,7 +2,7 @@ extends RefCounted
 ## People: writers wear fitted clothes over their skin, everyone else is
 ## painted by the shader, and all of them stand and move on the same skeleton.
 
-const CLOTHES := ["Hoodie", "Hood", "Rib", "Strings", "Metal", "Trousers"]
+const CLOTHES := ["Hoodie", "Hood", "Rib", "Strings", "Metal", "Trousers", "Shoes", "Soles", "Laces", "Pack", "Straps", "Loops"]
 
 
 func test_writer_clothes(t) -> void:
@@ -29,7 +29,7 @@ func test_writer_clothes(t) -> void:
 			t.check(pieces.has(piece), "%s has a %s" % [who, piece])
 		t.check(skin >= 1, "%s's body under the clothes is in a skin colour" % who)
 		t.check(cloth >= CLOTHES.size() - 2, "%s's clothes are coloured" % who)
-		t.check(w.skates and w.skeleton != null, "%s still has skates and a skeleton" % who)
+		t.check(w.board != null and w.rig != null and w.skeleton != null, "%s still has a skateboard and a skeleton" % who)
 		t.check(w.skeleton.find_bone("Head") >= 0 and w.skeleton.find_bone("foot_l") >= 0, "%s keeps the base skeleton" % who)
 		w.free()
 

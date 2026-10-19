@@ -274,27 +274,31 @@ func test_tricks(t) -> void:
 	s.take_events()
 	_drive(s, 5, _trick_spin)
 	t.check(_find(s.take_events(), "trick").is_empty(), "the trick button does nothing on the ground")
-	# A spin on the way up counts when you land it.
+	# A kickflip on the way up counts when you land it.
 	var seen := await _trick_jump(t, s, _trick_spin, 6)
-	t.check(not seen.is_empty() and seen.name == "Spin", "a jump and Trick is a spin (%s)" % [seen])
+	t.check(not seen.is_empty() and seen.name == "Kickflip", "a jump and Trick is a kickflip (%s)" % [seen])
 	t.check(s.line_count >= 1, "and it joins the line")
 	_drive(s, 90, _nothing, func() -> bool: return s.state == Skater.State.SKATE)
 	_drive(s, 30, _nothing)
 	t.check(s.body.transform.basis.y.is_equal_approx(Vector3.UP) and absf(s._trick_angle) < 0.01, "the body comes down upright")
+	t.check(s.board_spin() == Basis.IDENTITY, "and the board lands wheels down")
 	# The stick picks it.
 	seen = await _trick_jump(t, s, _trick_up, 6)
-	t.check(not seen.is_empty() and seen.name == "Flip" and s._trick_flip, "up flips forward")
+	t.check(not seen.is_empty() and seen.name == "360 Flip" and s._trick_kind == "tre", "up is a 360 flip")
 	seen = await _trick_jump(t, s, _trick_down, 6)
-	t.check(not seen.is_empty() and seen.name == "Backflip" and s._trick_dir < 0.0, "down flips back")
+	t.check(not seen.is_empty() and seen.name == "360" and s._trick_dir < 0.0, "down spins the body round")
 	seen = await _trick_jump(t, s, _trick_left, 6)
-	t.check(not seen.is_empty() and seen.name == "Spin" and s._trick_dir < 0.0, "left spins left")
-	# The body turns while it's done.
+	t.check(not seen.is_empty() and seen.name == "Heelflip" and s._trick_dir < 0.0, "left is a heelflip")
+	seen = await _trick_jump(t, s, _trick_right, 6)
+	t.check(not seen.is_empty() and seen.name == "Shove-it", "right is a shove-it")
+	# The board flips under the feet while it's done, and the body stays upright.
 	_drive(s, 30, _nothing)
 	_drive(s, 1, _jump_now)
 	_drive(s, 6, _nothing)
-	_drive(s, 1, _trick_up)
+	_drive(s, 1, _trick_spin)
 	_drive(s, 14, _nothing)
-	t.check(s.state == Skater.State.AIR and not s.body.transform.basis.y.is_equal_approx(Vector3.UP), "the body is turned mid-trick")
+	t.check(s.state == Skater.State.AIR and s.board_spin() != Basis.IDENTITY, "the board is flipping mid-trick")
+	t.check(s.body.transform.basis.y.dot(Vector3.UP) > 0.95, "and the body only stands over it")
 	# Too late in the air: landing cuts it short and it doesn't count.
 	_drive(s, 90, _nothing, func() -> bool: return s.state == Skater.State.SKATE)
 	_drive(s, 30, _nothing)
@@ -303,6 +307,7 @@ func test_tricks(t) -> void:
 	t.check(seen.is_empty(), "a trick pressed too late to finish doesn't count")
 	_drive(s, 20, _nothing)
 	t.check(s.body.transform.basis.y.is_equal_approx(Vector3.UP), "and the body is upright again")
+	t.check(s.board_spin() == Basis.IDENTITY, "and the board is back under the feet")
 	_free(y)
 
 
@@ -471,6 +476,134 @@ func test_kerb(t) -> void:
 		if alone > 0 and s.state != Skater.State.GRIND:
 			break
 	t.check(alone > 90 and alone < 900, "an unbalanced grind lasts a while, then tips you off (%.1f s)" % (alone * DT))
+	_free(y)
+
+
+func test_grind_tricks(t) -> void:
+	var y: Array = await _yard(t)
+	var s: Skater = y[1]
+	var w: Dictionary = y[2]
+	# Along the kerb, the trucks take it: a 50-50, or a nosegrind with Crouch.
+	for crouch in [false, true]:
+		s.place(Vector3(-55, 0.0, -3.3), Vector3.RIGHT)
+		_drive(s, 90, _push_east)
+		var start := {}
+		for i in 200:
+			s.input.clear()
+			s.input.grind = true
+			s.input.crouch = crouch
+			s.input.move = Vector3.RIGHT
+			s.step(DT)
+			var e := _find(s.take_events(), "grind_start")
+			if not e.is_empty():
+				start = e
+				break
+		var want := "Nosegrind" if crouch else "50-50"
+		t.check(not start.is_empty() and start.trick == want and s.grind_trick == want, "along the kerb is a %s (%s)" % [want, start])
+	# Coming at it across, the board turns across the line: a boardslide.
+	s.place(Vector3(-55, 0.0, -0.8), Vector3.RIGHT)
+	_drive(s, 60, _push_east)
+	var slide := {}
+	for i in 200:
+		s.input.clear()
+		s.input.grind = true
+		s.input.move = Vector3(1, 0, -1).normalized()
+		s.input.jump = i == 8
+		s.step(DT)
+		var e := _find(s.take_events(), "grind_start")
+		if not e.is_empty():
+			slide = e
+			break
+	t.check(not slide.is_empty() and slide.id == w.kerb and slide.trick == "Boardslide", "across the kerb is a boardslide (%s)" % [slide])
+	_free(y)
+
+
+func test_manual(t) -> void:
+	var y: Array = await _yard(t)
+	var s: Skater = y[1]
+	s.place(Vector3(-60, 0.0, 1.5), Vector3.RIGHT)
+	_drive(s, 70, _push_east)
+	s.take_events()
+	var flow := s.flow
+	var events: Array[Dictionary] = []
+	var ticks := 0
+	for i in 60:
+		s.input.clear()
+		s.input.move = Vector3.RIGHT
+		s.input.trick = true
+		s.step(DT)
+		events.append_array(s.take_events())
+		ticks += 1 if s.manual else 0
+	t.check(not _find(events, "manual").is_empty() and ticks >= 58, "holding Trick on the move is a manual")
+	t.check(s.flow > flow and s.line_count >= 1, "it builds Flow and joins the line")
+	t.check(_find(events, "trick").is_empty(), "and isn't an air trick")
+	_drive(s, 2, _push_east)
+	t.check(not s.manual and not _find(s.take_events(), "manual_end").is_empty(), "letting go puts the nose down")
+	# Held too long, it comes down by itself.
+	var held := 0
+	for i in int(Skater.MANUAL_TIME / DT) + 30:
+		s.input.clear()
+		s.input.move = Vector3.RIGHT
+		s.input.trick = true
+		s.step(DT)
+		held += 1 if s.manual else 0
+	t.check(not s.manual and held <= int(Skater.MANUAL_TIME / DT) + 1, "a manual lasts %.0f s at most" % Skater.MANUAL_TIME)
+	# Too slow, no manual.
+	s.place(Vector3(-60, 0.0, 1.5), Vector3.RIGHT)
+	_drive(s, 2, _nothing)
+	s.input.clear()
+	s.input.trick = true
+	s.step(DT)
+	t.check(not s.manual, "standing still, no manual")
+	_free(y)
+
+
+func test_board(t) -> void:
+	var y: Array = await _yard(t, true)
+	var s: Skater = y[1]
+	var p := s.person
+	s.place(Vector3(-40, 0.0, 1.5), Vector3.RIGHT)
+	_drive(s, 60, _push_east)
+	_drive(s, 30, _nothing)
+	t.check(not p.board_on_back() and p.board.get_parent() == p, "riding, the board is under the feet")
+	t.check(p.board.transform.is_equal_approx(Person.STANCE), "lined up with the stance (%s)" % p.board.transform)
+	t.check(p.board.global_basis.z.normalized().dot(s.heading) > 0.95, "and its nose points the way it rolls")
+	t.check(p.rig.active, "and the writer stands on it")
+	# A kickflip turns the board under the feet, and it stays there.
+	_drive(s, 1, _jump_now)
+	_drive(s, 6, _nothing)
+	_drive(s, 1, _trick_spin)
+	_drive(s, 14, _nothing)
+	var under := p.board.transform.origin
+	t.check(s.state == Skater.State.AIR and not p.board.transform.basis.is_equal_approx(Person.STANCE.basis),
+			"a kickflip turns the board")
+	t.check(Vector2(under.x - Person.STANCE.origin.x, under.z - Person.STANCE.origin.z).length() < 0.1,
+			"under the feet (%s)" % under)
+	_drive(s, 90, _nothing, func() -> bool: return s.state == Skater.State.SKATE)
+	_drive(s, 30, _push_east)
+	t.check(p.board.transform.is_equal_approx(Person.STANCE), "and lands wheels down under them")
+	# Painting, the tail is kicked and the board comes up into the free hand.
+	s.lock(true)
+	_drive(s, 60, _nothing)
+	t.check(p.board.transform.is_equal_approx(Person.HELD) and p.rig.hand_on > 0.9, "painting, the board is held by the nose")
+	s.lock(false)
+	_drive(s, 60, _push_east)
+	t.check(p.board.transform.is_equal_approx(Person.STANCE) and p.rig.hand_on < 0.1, "and dropped to ride off")
+	# Climbing, it goes in the backpack, and comes out on the roof.
+	s.place(Vector3(-32.0, Yard.CURB, -6.5), Vector3.FORWARD)
+	_drive(s, 120, _climb_up, func() -> bool: return s.state == Skater.State.CLIMB and s.global_position.y > 2.5)
+	_drive(s, 30, _climb_up)
+	t.check(p.board_on_back() and p.board.transform.is_equal_approx(Transform3D.IDENTITY), "climbing, the board is in the backpack")
+	t.check(not p.rig.active, "and the feet are free to climb")
+	var events: Array[Dictionary] = []
+	for i in 900:
+		_drive(s, 1, _climb_up)
+		events.append_array(s.take_events())
+		if not _find(events, "climb_top").is_empty():
+			break
+	_drive(s, 90, _nothing)
+	t.check(s.state == Skater.State.SKATE and not p.board_on_back() and p.board.transform.is_equal_approx(Person.STANCE),
+			"on the roof it comes out and goes under the feet")
 	_free(y)
 
 
@@ -836,7 +969,7 @@ func _level(cam: StreetCamera, s: Skater, w: Dictionary, worst: Array) -> void:
 func test_body(t) -> void:
 	var y: Array = await _yard(t, true)
 	var s: Skater = y[1]
-	t.check(s.person != null and s.person.skates, "a writer on skates")
+	t.check(s.person != null and s.person.board != null and s.person.rig != null, "a writer with a skateboard")
 	for clip in Skater.CLIPS:
 		t.check(s.person.clip_path(clip) != "", "the %s clip is there" % clip)
 	s.place(Vector3(-40, 0.0, 1.5), Vector3.RIGHT)
@@ -980,6 +1113,11 @@ func _trick_down(inp: SkaterInput) -> void:
 func _trick_left(inp: SkaterInput) -> void:
 	inp.trick_pressed = true
 	inp.stick = Vector2(-1, 0)
+
+
+func _trick_right(inp: SkaterInput) -> void:
+	inp.trick_pressed = true
+	inp.stick = Vector2(1, 0)
 
 
 func _jump_now(inp: SkaterInput) -> void:

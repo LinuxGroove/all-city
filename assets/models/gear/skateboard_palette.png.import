@@ -2,8 +2,8 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://de4au0k0j0aaq"
-path="res://.godot/imported/inline_skate_palette.png-759ab6159476dd2d6fdfe3fc2ff51f06.ctex"
+uid="uid://kpjpyw30bp0q"
+path="res://.godot/imported/skateboard_palette.png-77f9349cf68f0e6a9f603220693a4097.ctex"
 metadata={
 "vram_texture": false
 }
@@ -13,8 +13,8 @@ generator_parameters={
 
 [deps]
 
-source_file="res://assets/models/gear/inline_skate_palette.png"
-dest_files=["res://.godot/imported/inline_skate_palette.png-759ab6159476dd2d6fdfe3fc2ff51f06.ctex"]
+source_file="res://assets/models/gear/skateboard_palette.png"
+dest_files=["res://.godot/imported/skateboard_palette.png-77f9349cf68f0e6a9f603220693a4097.ctex"]
 
 [params]
 
