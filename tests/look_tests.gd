@@ -4,7 +4,7 @@ extends RefCounted
 
 
 func test_kit_models(t) -> void:
-	for set_name in ["street", "stairs", "facade", "vehicles", "gear"]:
+	for set_name in ["street", "stairs", "facade", "vehicles", "gear", "landmark"]:
 		var names := Kit.models(set_name)
 		t.check(names.size() > 0, "the %s set has models" % set_name)
 		for n in names:

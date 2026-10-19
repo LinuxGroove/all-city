@@ -17,6 +17,8 @@ const CELLS := {
 	"white": [9, 0, Color("#f4efe6")],
 	"kerb": [10, 0, Color("#c9c2b8")],
 	"shadow": [11, 0, Color("#221f2b")],
+	"granite": [12, 0, Color("#8a817f")],
+	"granite_dark": [13, 0, Color("#5e5658")],
 	"brick": [0, 1, Color("#b5452f")],
 	"brick_dark": [1, 1, Color("#7e2c22")],
 	"ochre": [2, 1, Color("#d89a3c")],
@@ -41,6 +43,8 @@ const CELLS := {
 	"orange": [9, 2, Color("#f08a2c")],
 	"purple": [10, 2, Color("#6a3fb5")],
 	"cobalt": [11, 2, Color("#2846b8")],
+	"bronze": [12, 2, Color("#7a4e28")],
+	"bronze_dark": [13, 2, Color("#553419")],
 	"sodium": [0, 3, Color("#ffb347")],
 	"neon_pink": [1, 3, Color("#ff4fa3")],
 	"neon_cyan": [2, 3, Color("#3ff2ff")],
@@ -57,6 +61,10 @@ const CELLS := {
 	"wood_dark": [5, 4, Color("#5c3a26")],
 	"bark": [6, 4, Color("#4a3427")],
 	"glass": [7, 4, Color("#1f3550")],
+	"pine": [8, 4, Color("#234a3a")],
+	"pine_light": [9, 4, Color("#33644a")],
+	"blossom": [10, 4, Color("#f29ac4")],
+	"bark_light": [11, 4, Color("#9c8370")],
 }
 
 

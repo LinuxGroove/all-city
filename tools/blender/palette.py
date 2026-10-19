@@ -20,7 +20,8 @@ ROWS = [
     # Neutrals: ink, asphalt, concrete, paving, stone, cream, white.
     [("ink", "14121c"), ("asphalt", "2b2a33"), ("asphalt_light", "403e4a"), ("concrete_dark", "6b6670"),
      ("concrete", "8e8a8f"), ("concrete_light", "b9b3ae"), ("paving", "a59a90"), ("stone", "d2c4ae"),
-     ("cream", "efe2c6"), ("white", "f4efe6"), ("kerb", "c9c2b8"), ("shadow", "221f2b")],
+     ("cream", "efe2c6"), ("white", "f4efe6"), ("kerb", "c9c2b8"), ("shadow", "221f2b"),
+     ("granite", "8a817f"), ("granite_dark", "5e5658")],
     # Walls.
     [("brick", "b5452f"), ("brick_dark", "7e2c22"), ("ochre", "d89a3c"), ("terracotta", "c8613d"),
      ("teal", "2f7f86"), ("sea", "2a5d8f"), ("pink", "e07a8b"), ("mint", "8fcfb1"), ("lilac", "8f7ab8"),
@@ -28,13 +29,15 @@ ROWS = [
     # Metals and signal colours.
     [("steel", "5d6878"), ("steel_dark", "353b47"), ("iron_green", "2f5a48"), ("signal_red", "e8463a"),
      ("signal_yellow", "f2c641"), ("hivis", "c6f03c"), ("civic_blue", "3a6fd8"), ("chrome", "c3ccd6"),
-     ("rubber", "1e1d24"), ("orange", "f08a2c"), ("purple", "6a3fb5"), ("cobalt", "2846b8")],
+     ("rubber", "1e1d24"), ("orange", "f08a2c"), ("purple", "6a3fb5"), ("cobalt", "2846b8"),
+     ("bronze", "7a4e28"), ("bronze_dark", "553419")],
     # Lights: lamps, neon and lit windows (the shader makes these glow).
     [("sodium", "ffb347"), ("neon_pink", "ff4fa3"), ("neon_cyan", "3ff2ff"), ("window_warm", "ffd28a"),
      ("window_cool", "a8d8ff"), ("lamp_white", "fff4dc"), ("signal_green", "4dff8a"), ("signal_amber", "ffbf3f")],
     # Greens and woods.
     [("grass", "4f8f4a"), ("leaf", "3c7a3f"), ("leaf_dark", "285a33"), ("leaf_light", "6aa84f"),
-     ("wood", "8a5a3a"), ("wood_dark", "5c3a26"), ("bark", "4a3427"), ("glass", "1f3550")],
+     ("wood", "8a5a3a"), ("wood_dark", "5c3a26"), ("bark", "4a3427"), ("glass", "1f3550"),
+     ("pine", "234a3a"), ("pine_light", "33644a"), ("blossom", "f29ac4"), ("bark_light", "9c8370")],
 ]
 
 INDEX = {}

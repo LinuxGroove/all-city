@@ -3,7 +3,7 @@
     /path/to/venv/bin/python tools/blender/build_art.py [set ...] [--only name,name]
 
 The venv needs the `bpy` wheel from PyPI (Blender as a Python module).
-Sets: street, stairs, facade, vehicles, gear. Prints each model's triangle
+Sets: street, stairs, facade, vehicles, gear, landmark. Prints each model's triangle
 count, which the game's budget is judged by.
 """
 import os
@@ -20,7 +20,8 @@ SETS = {}
 def _load_sets():
     import street_props
     SETS["street"] = street_props.ASSETS
-    for mod, key in (("stair_set", "stairs"), ("facade_kit", "facade"), ("vehicles", "vehicles"), ("gear", "gear")):
+    for mod, key in (("stair_set", "stairs"), ("facade_kit", "facade"), ("vehicles", "vehicles"), ("gear", "gear"),
+                     ("landmarks", "landmark")):
         try:
             m = __import__(mod)
         except ImportError:
@@ -50,7 +51,8 @@ def main(argv):
             ackit.export(ob, path)
             tris = ackit.tri_count(ob)
             total += 1
-            print("%-10s %-24s %6d tris" % (set_name, name, tris))
+            w, d, h = ackit.dims(ob)
+            print("%-10s %-24s %6d tris  %6.2f m tall, %5.2f x %5.2f m" % (set_name, name, tris, h, w, d))
     print("built %d models" % total)
 
 

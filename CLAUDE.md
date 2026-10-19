@@ -51,7 +51,7 @@ Before calling a build done, export it with the release template (`godot --headl
 | `cartographer/` | The Cartographer (Python): turns an OpenStreetMap extract into a town folder of tiles (`osm`, `buildings`, `lines`, `ground`, `water`, `terrain`, `network`, `quarters`, `eyes`, `respect`, `props`, `tiles`, `build`, `cli`); the tile format is in `docs/tiles.md` |
 | `towns/<id>/` | Towns that come with the game: `town.json` and `tiles/`. Towns built since go in `user://towns/<id>/` |
 | `assets/art/palette.png` | The one palette every model is coloured from (written by `tools/blender/palette.py`) |
-| `assets/models/<set>/` | The kit: `street`, `stairs`, `facade`, `vehicles`, `gear`, each a GLB with its palette, made by `tools/blender/` |
+| `assets/models/<set>/` | The kit: `street` (with its trees, and far versions of them), `stairs`, `facade`, `vehicles`, `gear`, `landmark` (water towers, smokestacks, ballpark pieces, the bull, a spire), each a GLB with its palette, made by `tools/blender/` |
 | `assets/people/` | Quaternius' Universal Base Characters, their hair and the Universal Animation Libraries, with their licence files; `outfits/` holds the writer's streetwear, one glTF per body (made by `tools/blender/wardrobe.py`) |
 | `assets/fonts/` | Bungee (names, headings, buttons), Montserrat (text), Permanent Marker (tags), with their licences |
 | `addons/linuxgroove/` | Shared LinuxGroove add-on (settings, input, theme, LAN, online, names, play tests, launch ping, focus pause) |

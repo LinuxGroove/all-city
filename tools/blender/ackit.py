@@ -125,6 +125,40 @@ def ball(radius, at=(0, 0, 0), colour="leaf", role="Palette", subdiv=2, squash=1
     return ob
 
 
+def blob(radii, at=(0, 0, 0), colour="leaf", role="Palette", subdiv=2, lumps=0.12, seed=0, turn=0.0):
+    """A lumpy ellipsoid with radii (x, y, z): tree crowns, rough stone,
+    muscle. `lumps` pushes each vertex in or out by up to that fraction of
+    its radius, from a fixed seed, so a model builds the same every time.
+    `turn` spins it about z first, so faceted ones don't all line up."""
+    bm = bmesh.new()
+    bmesh.ops.create_icosphere(bm, subdivisions=subdiv, radius=1.0)
+    for v in bm.verts:
+        n = v.co.normalized()
+        # Smooth noise: a few fixed waves round the sphere.
+        k = (math.sin(n.x * 3.1 + seed * 1.7) * math.cos(n.y * 2.7 - seed * 0.9) +
+             math.sin(n.z * 3.7 + n.x * 1.3 + seed * 2.3)) * 0.5
+        v.co = n * (1.0 + lumps * k)
+    if turn:
+        bmesh.ops.rotate(bm, cent=Vector(), matrix=Matrix.Rotation(turn, 3, "Z"), verts=bm.verts)
+    bmesh.ops.scale(bm, vec=Vector(radii), verts=bm.verts)
+    _place(bm, at, None)
+    return _new_object("blob", bm, colour, role)
+
+
+def strut(a, b, radius, top=None, colour="steel", role="Palette", sides=8):
+    """A cylinder (or a taper to `top`) from point a to point b: legs,
+    braces, branches."""
+    a, b = Vector(a), Vector(b)
+    d = b - a
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=sides, radius1=radius,
+                          radius2=radius if top is None else top, depth=d.length)
+    bmesh.ops.translate(bm, vec=Vector((0, 0, d.length / 2)), verts=bm.verts)
+    m = Matrix.Translation(a) @ Vector((0, 0, 1)).rotation_difference(d.normalized()).to_matrix().to_4x4()
+    bmesh.ops.transform(bm, matrix=m, verts=bm.verts)
+    return _new_object("strut", bm, colour, role)
+
+
 def tube(points, radius, colour="steel", role="Palette", sides=10, caps=True):
     """A round tube along a polyline of (x, y, z) points (rails, pipes,
     arms), with mitred joints."""
@@ -174,6 +208,21 @@ def prism(outline, height, at=(0, 0, 0), colour="concrete", role="Palette", beve
     _bevel(bm, bevel)
     _place(bm, at, rot)
     return _new_object("prism", bm, colour, role)
+
+
+def plate(outline, thickness, at=(0, 0, 0), colour="steel", role="Palette"):
+    """A flat cut-out: an outline [(x, z), ...] in the x-z plane (a side
+    view, as seen from the front) given `thickness` along y, centred on
+    y = 0. Signs, silhouettes, panels."""
+    bm = bmesh.new()
+    vs = [bm.verts.new((x, -thickness / 2, z)) for x, z in outline]
+    f = bm.faces.new(vs)
+    ext = bmesh.ops.extrude_face_region(bm, geom=[f])
+    back = [v for v in ext["geom"] if isinstance(v, bmesh.types.BMVert)]
+    bmesh.ops.translate(bm, vec=Vector((0, thickness, 0)), verts=back)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    _place(bm, at, None)
+    return _new_object("plate", bm, colour, role)
 
 
 def profile(points, length, at=(0, 0, 0), colour="stone", role="Palette", bevel=0.0):
@@ -235,6 +284,20 @@ def mirror_x(objs):
         c.data.flip_normals()
         out.append(c)
     return out
+
+
+def fit_height(ob, height):
+    """Scales a joined model about its foot so its top is exactly `height`
+    above z = 0 (the game scales by measured height / model height)."""
+    top = max(v.co.z for v in ob.data.vertices)
+    ob.data.transform(Matrix.Scale(height / top, 4))
+    return ob
+
+
+def dims(ob):
+    """(width x, depth y, height z) of a model's bounds."""
+    vs = [v.co for v in ob.data.vertices]
+    return tuple(max(v[i] for v in vs) - min(v[i] for v in vs) for i in range(3))
 
 
 def export(ob, path):

@@ -3,14 +3,14 @@ extends Node3D
 ## set in a row with its name, or a street scene that puts them together.
 ##
 ##   xvfb-run -a -s "-screen 0 1600x900x24" godot --path . --resolution 1600x900 tools/art_preview.tscn -- \
-##       --set=street --out=docs/art/street.png [--time=dusk|day|night]
+##       --set=street --out=docs/art/street.png [--time=dusk|day|night] [--only=tree_oak,tree_pine] [--turn=90]
 ##
 ## Sets are the folders of assets/models/ (street, stairs, facade, vehicles,
-## gear), plus "scene" (a street with buildings, a staircase, traffic and
+## gear, landmark), plus "scene" (a street with buildings, a staircase, traffic and
 ## writers) and "all" (every set and the scene at every time of day, into
 ## the folder given by --out).
 
-const SETS := ["street", "stairs", "facade", "vehicles", "gear"]
+const SETS := ["street", "stairs", "facade", "vehicles", "gear", "landmark"]
 ## Colours the Wall role takes in lineups, so tinting shows.
 const TINTS := ["ochre", "teal", "brick", "pink", "mint", "cobalt", "terracotta", "lilac", "sand", "signal_red"]
 
@@ -61,6 +61,9 @@ func _shoot(set_name: String, time: String, path: String) -> void:
 ## Every model of a set in rows, each over its name.
 func _lineup(stage: Node3D, cam: Camera3D, set_name: String) -> void:
 	var models := Array(Kit.models(set_name))
+	if _opts.has("only"):
+		var only := str(_opts.only).split(",")
+		models = models.filter(func(m: String) -> bool: return m.get_file() in only)
 	models.sort_custom(_taller)
 	var sizes: Array[AABB] = []
 	var widest := 0.0
@@ -99,6 +102,7 @@ func _lineup(stage: Node3D, cam: Camera3D, set_name: String) -> void:
 			var box: AABB = sizes[i]
 			var tint := Palette.color(TINTS[i % TINTS.size()])
 			var node := Kit.instance(models[i], tint)
+			node.rotation_degrees.y = float(_opts.get("turn", 0.0))
 			node.position = Vector3(x + box.size.x * 0.5 - box.get_center().x, 0, z - box.get_center().z)
 			stage.add_child(node)
 			var placed := AABB(box.position + node.position, box.size)
